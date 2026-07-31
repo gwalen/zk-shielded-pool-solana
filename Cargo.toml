@@ -1,0 +1,42 @@
+[package]
+name = "zk-shielded-pool-solana"
+version = "0.1.0"
+edition = "2021"
+
+[workspace]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }
+
+[lib]
+# "lib" is required alongside "cdylib": the 0.1.0 IDL build compiles the
+# crate as a host library.
+crate-type = ["cdylib", "lib"]
+
+[features]
+alloc = []
+client = []
+debug = []
+idl-build = ["quasar-lang/idl-build"]
+
+[dependencies]
+# Quasar 0.1.0-release, pinned by rev: crates.io still hosts 0.0.0
+# placeholders for quasar-lang/quasar-cli, so the release line installs from
+# git. Keep this rev in lockstep with the CLI rev installed by
+# .github/workflows/quasar.yml.
+quasar-lang = { git = "https://github.com/blueshift-gg/quasar", rev = "0361701" }
+quasar-spl = { git = "https://github.com/blueshift-gg/quasar", rev = "0361701" }
+solana-instruction = { version = "3.1.10" }
+
+[dev-dependencies]
+quasar-test = { git = "https://github.com/blueshift-gg/quasar", rev = "0361701" }
+# Direct quasar-svm dev-dependency, unique to this example: the program
+# computes interest from `Clock::get()?.slot`, and two test scenarios must
+# warp the SLOT. quasar-test only exposes `warp_to_timestamp` (which leaves
+# the slot untouched), so those scenarios drive the low-level QuasarSvm
+# harness directly via `svm.sysvars.warp_to_slot(...)`. Same crates.io
+# version quasar-test itself depends on, so the two harnesses share types.
+quasar-svm = "=0.1.0"
+# For decoding/constructing raw SPL accounts in the low-level slot-warp
+# scenarios; matches quasar-svm 0.1.0's own spl-token major.
+spl-token = { version = "9", default-features = false, features = ["no-entrypoint"] }
