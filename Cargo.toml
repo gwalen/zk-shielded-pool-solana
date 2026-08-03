@@ -27,6 +27,10 @@ idl-build = ["quasar-lang/idl-build"]
 quasar-lang = { git = "https://github.com/blueshift-gg/quasar", rev = "0361701" }
 quasar-spl = { git = "https://github.com/blueshift-gg/quasar", rev = "0361701" }
 solana-instruction = { version = "3.1.10" }
+# We need raw syscall access for poseidon hash on-chain, can't use solana-poseidon crate because it is not no-std compatible
+# Major 5 matches quasar-lang's own dependency
+solana-define-syscall = "5"
+
 
 [dev-dependencies]
 quasar-test = { git = "https://github.com/blueshift-gg/quasar", rev = "0361701" }
