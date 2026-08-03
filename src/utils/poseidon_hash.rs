@@ -4,6 +4,10 @@ const POSEIDON_BN254_X5: u64 = 0;
 const POSEIDON_BIG_ENDIAN: u64 = 0;
 const POSEIDON_LITTLE_ENDIAN: u64 = 1;
 
+pub fn hash2(a: [u8; 32], b: [u8; 32]) -> Result<[u8; 32], ProgramError> {
+    sol_poseidon_hash(&[&a, &b])
+}
+
 /// Poseidon over 32-byte field elements. On-chain only.
 #[cfg(any(target_os = "solana"))]
 pub fn sol_poseidon_hash(vals: &[&[u8]]) -> Result<[u8; 32], ProgramError> {

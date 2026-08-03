@@ -25,6 +25,7 @@ mod quasar_hello_solana {
 
     #[instruction(discriminator = 1)]
     pub fn initialize(ctx: Ctx<Initialize>) -> Result<(), ProgramError> {
-        initialize::handle_initialize(&mut ctx.accounts)
+        // initialize::handle_initialize(&mut ctx.accounts)
+        initialize::handle_initialize(&mut ctx)
     }
 }
