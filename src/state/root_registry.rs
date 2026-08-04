@@ -1,9 +1,10 @@
 use crate::utils::{
     constants::{FR_ONE, FR_ZERO, MERKLE_TREE_DEPTH, ROOT_RING_BUFFER_LENGTH},
     errors::DappError,
-    poseidon_hash::{self, sol_poseidon_hash},
+    poseidon_hash::{self},
 };
 use quasar_lang::prelude::*;
+use solana_poseidon::{Endianness, Parameters};
 
 pub const EMPTY_TREE_VALUE: [u8; 32] = FR_ONE;
 
@@ -132,8 +133,13 @@ impl RootRegistry {
         for i in 1..MERKLE_TREE_DEPTH {
             // let z_prev = zero_values[i - 1];
             let z_prev = Self::get_array_element(&zero_values, i - 1);
-            // let z_prev_bytes = fr_to_le_bytes(z_prev);
-            let hash = poseidon_hash::hash2(z_prev, z_prev)?;
+            // let hash = poseidon_hash::hash2(z_prev, z_prev)?;
+            let hash = solana_poseidon::hashv(
+                Parameters::Bn254X5,
+                Endianness::LittleEndian,
+                &[&z_prev, &z_prev],
+            )
+            .unwrap().to_bytes();
             Self::set_array_element(&mut zero_values, i, &hash);
         }
 
