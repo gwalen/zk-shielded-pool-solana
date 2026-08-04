@@ -3,11 +3,13 @@ use quasar_lang::prelude::*;
 
 use crate::{
     state::{
-        root_registry::{RootRegistry, RootRegistryInner, EMPTY_TREE_VALUE}, 
-        vault::Vault}, 
-        utils::{constants::{MERKLE_TREE_DEPTH, ROOT_RING_BUFFER_LENGTH}, 
-        poseidon_hash::sol_poseidon_hash
-    }
+        root_registry::{RootRegistry, RootRegistryInner},
+        vault::Vault,
+    },
+    utils::{
+        constants::{EMPTY_TREE_VALUE, ROOT_RING_BUFFER_LENGTH},
+        imt_tree::{set_array_element, ImtTree},
+    },
 };
 
 /// Accounts for the hello instruction.
@@ -19,7 +21,7 @@ pub struct Initialize {
     pub signer: Signer,
 
     #[account(
-        mut, 
+        mut,
         init(idempotent),
         payer = signer,
         address = Vault::seeds(),
@@ -36,37 +38,24 @@ pub struct Initialize {
 }
 
 // this function will only be called from lib.rs and it is safe to enforce inline optimization for CU
-#[inline(always)] 
+#[inline(always)]
 pub fn handle_initialize(ctx: &mut Ctx<Initialize>) -> Result<(), ProgramError> {
     log("Initializing Shielded Pool Program");
     let root_registry = &mut ctx.accounts.root_registry;
 
-    // init tree values when tree is empty (no leafs inserted yet) -  but still need to be correct Merkle tree (hashing tree)
-    let zero_values: [u8; 32 * MERKLE_TREE_DEPTH] =
-        RootRegistry::generate_zero_values_for_levels().unwrap();
-    // root is the hash of the top leaf level    
-    let root = sol_poseidon_hash(&[
-        &RootRegistry::get_array_element(&zero_values, MERKLE_TREE_DEPTH - 1), 
-        &RootRegistry::get_array_element(&zero_values, MERKLE_TREE_DEPTH - 1), 
-    ]).unwrap();
+    let imt = ImtTree::new()?;
+
+    // We need to set the ring buffer to empty values, with the empty-tree root in slot 0.
     let mut roots_history = [0u8; 32 * ROOT_RING_BUFFER_LENGTH];
-    // We need to set ring buffer to empty values
     for i in 0..ROOT_RING_BUFFER_LENGTH {
-        RootRegistry::set_array_element(&mut roots_history, i, &EMPTY_TREE_VALUE);
+        set_array_element(&mut roots_history, i, &EMPTY_TREE_VALUE);
     }
-    RootRegistry::set_array_element(&mut roots_history, 0, &root);
-    // We need to set frontiers to empty values
-    let mut frontiers = [0u8; 32 * MERKLE_TREE_DEPTH];
-    for i in 0..MERKLE_TREE_DEPTH {
-        RootRegistry::set_array_element(&mut frontiers, i, &EMPTY_TREE_VALUE);
-    };
+    set_array_element(&mut roots_history, 0, &imt.root);
 
     root_registry.set_inner(RootRegistryInner {
-        frontiers,
-        zero_values,
+        imt,
         roots_history,
         last_root_idx: 0,
-        next_leaf_idx: 0,
         bump: ctx.bumps.root_registry,
     });
 

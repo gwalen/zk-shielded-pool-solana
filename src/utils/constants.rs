@@ -11,3 +11,7 @@ pub const FR_ONE: [u8; 32] = {
     bytes[0] = 1;
     bytes
 };
+
+// Marker for a slot that holds no real value yet: an unused root-history entry, or a
+// frontier level that no insert has passed through on the left.
+pub const EMPTY_TREE_VALUE: [u8; 32] = FR_ONE;
