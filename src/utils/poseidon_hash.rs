@@ -1,6 +1,9 @@
 use quasar_lang::prelude::*;
+
+use crate::utils::errors::DappError;
+
 #[cfg(not(target_os = "solana"))]
-use solana_poseidon::{Endianness, Parameters};
+use solana_poseidon::{Endianness, Parameters, PoseidonSyscallError};
 
 const POSEIDON_BN254_X5: u64 = 0;
 // const POSEIDON_BIG_ENDIAN: u64 = 0;
@@ -22,23 +25,29 @@ pub fn sol_poseidon_hash(vals: &[&[u8]]) -> Result<[u8; 32], ProgramError> {
         sol_poseidon(
             POSEIDON_BN254_X5,
             POSEIDON_LITTLE_ENDIAN,
-            vals.as_ptr() as *const u8, // need to covert to: *const u8
+            vals.as_ptr() as *const u8,
             vals.len() as u64,
             hash_result.as_mut_ptr(),
         )
     };
     match status {
         0 => Ok(hash_result),
-        _ => Err(ProgramError::InvalidArgument), // or a named PoseidonFailed
+        status => Err(DappError::from_poseidon_status(status).into()),
     }
 }
 
-// This is a host (off-chain) stub is there because quasar build compiles crate for the host OS to generate the IDL.
-// Without it that build breaks. Since we don't want an off-chain implementation, a stub is just a placeholder.
+// Host (off-chain) stub: quasar build compiles this crate for the host OS to
+// generate the IDL. Uses solana-poseidon / light_poseidon instead of the syscall.
 #[cfg(not(target_os = "solana"))]
 pub fn sol_poseidon_hash(vals: &[&[u8]]) -> Result<[u8; 32], ProgramError> {
     let hash = solana_poseidon::hashv(Parameters::Bn254X5, Endianness::LittleEndian, vals)
-        .unwrap()
+        .map_err(poseidon_syscall_error_to_dapp)?
         .to_bytes();
     Ok(hash)
+}
+
+#[cfg(not(target_os = "solana"))]
+fn poseidon_syscall_error_to_dapp(err: PoseidonSyscallError) -> ProgramError {
+    // Mirror the u64 status mapping used on-chain.
+    DappError::from_poseidon_status(u64::from(err)).into()
 }

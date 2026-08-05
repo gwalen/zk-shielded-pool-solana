@@ -1424,7 +1424,7 @@ dependencies = [
  "solana-instruction-view",
  "solana-program-error",
  "solana-program-log",
- "wincode 0.4.9",
+ "wincode",
  "zeropod",
 ]
 
@@ -1867,7 +1867,7 @@ dependencies = [
  "solana-program-error",
  "solana-sanitize",
  "solana-sha256-hasher",
- "wincode 0.4.9",
+ "wincode",
 ]
 
 [[package]]
@@ -2513,9 +2513,9 @@ dependencies = [
 
 [[package]]
 name = "solana-signature"
-version = "3.5.0"
+version = "3.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "40256f54e42a6f606722a4a6cad22c9be97d97e524004990d057e394d546f8f0"
+checksum = "6843d39c97ac1e6ef7ae06c676183e1c2d427aaa7cfdec8a61982342eb86fc2d"
 dependencies = [
  "five8",
  "solana-sanitize",
@@ -3049,19 +3049,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "wincode"
-version = "0.5.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "66d967db7705dc29120bb6e8ce5b5a2e27734ed5976d1c904e95bd238d1c3c5a"
-dependencies = [
- "pastey",
- "proc-macro2",
- "quote",
- "thiserror 2.0.19",
- "wincode-derive",
-]
-
-[[package]]
 name = "wincode-derive"
 version = "0.4.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3136,21 +3123,21 @@ dependencies = [
 
 [[package]]
 name = "zeropod"
-version = "0.3.5"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "af6c4fe8dc57179de72db5185c9c618a3350a9122a76ec3e13ccd493bca38931"
+checksum = "efea93c3bd4eaad26f65af88348e5e08077f4a4682adb37147765172100313c4"
 dependencies = [
  "solana-address 2.5.0",
  "solana-program-error",
- "wincode 0.5.5",
+ "wincode",
  "zeropod-derive",
 ]
 
 [[package]]
 name = "zeropod-derive"
-version = "0.3.5"
+version = "0.3.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "babb94e405e4914176ad9fd74e34c640ea0fcd314bfcb2bb6690a5300e724257"
+checksum = "8274ac397f401621161eb645a2bc19b641a81a4f4b4a1e0e4795867fe494f6b1"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3169,7 +3156,8 @@ dependencies = [
  "solana-instruction",
  "solana-poseidon 4.0.0",
  "spl-token",
- "wincode 0.4.9",
+ "wincode",
+ "zeropod",
 ]
 
 [[package]]

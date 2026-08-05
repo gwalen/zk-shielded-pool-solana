@@ -131,6 +131,12 @@ impl ImtTreeZc {
     }
 }
 
+pub fn u64_to_32bytes_le(v: u64) -> [u8; 32] {
+    let mut bytes = [0u8; 32];
+    bytes[0..8].copy_from_slice(&v.to_le_bytes());
+    bytes
+}
+
 /// In place initialization of frontiers and zero_values with not stack/heap allocations
 fn initialize_empty_tree_arrays(
     frontiers: &mut [u8; 32 * MERKLE_TREE_DEPTH],
@@ -155,16 +161,12 @@ fn initialize_empty_tree_arrays(
     Ok(root)
 }
 
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    // Ported from the circuit crate's `on_chain_imt` tests
 
-    fn test_leaf(index: u64) -> [u8; 32] {
-        let mut leaf = [0u8; 32];
-        leaf[..8].copy_from_slice(&index.to_le_bytes());
-        leaf
-    }
+    // Tests ported from the circuit crate's `on_chain_imt` tests
 
     fn empty_tree() -> ImtTreeZc {
         ImtTree::new().unwrap().into()
@@ -204,7 +206,7 @@ mod tests {
         assert_eq!(imt.next_leaf_idx.get(), 0);
 
         for i in 1..=8u64 {
-            imt.insert(test_leaf(i)).unwrap();
+            imt.insert(u64_to_32bytes_le(i)).unwrap();
             assert_eq!(imt.next_leaf_idx.get(), i as u32);
         }
     }
@@ -216,7 +218,7 @@ mod tests {
         let mut seen_roots = std::vec![imt.root];
 
         for i in 1..=8u64 {
-            let returned_root = imt.insert(test_leaf(i)).unwrap();
+            let returned_root = imt.insert(u64_to_32bytes_le(i)).unwrap();
             assert_eq!(
                 returned_root, imt.root,
                 "insert returned a root that differs from the stored one after {i} inserts"
@@ -232,7 +234,7 @@ mod tests {
     #[test]
     fn first_insert_records_the_leaf_as_the_level_zero_frontier() {
         let mut imt = empty_tree();
-        let leaf = test_leaf(42);
+        let leaf = u64_to_32bytes_le(42);
 
         imt.insert(leaf).unwrap();
 
@@ -248,13 +250,13 @@ mod tests {
         // Inside the boundary: the last free slot still takes a leaf. This index is all
         // ones, so it also exercises the right-hand branch at every level.
         imt.next_leaf_idx = PodU32::from(CAPACITY - 1);
-        imt.insert(test_leaf(1)).unwrap();
+        imt.insert(u64_to_32bytes_le(1)).unwrap();
         assert_eq!(imt.next_leaf_idx.get(), CAPACITY);
 
         // Outside the boundary: rejected, and the tree is left untouched.
         let root_before = imt.root;
         let frontiers_before = imt.frontiers;
-        assert!(imt.insert(test_leaf(2)).is_err());
+        assert!(imt.insert(u64_to_32bytes_le(2)).is_err());
         assert_eq!(imt.root, root_before);
         assert_eq!(imt.frontiers, frontiers_before);
         assert_eq!(imt.next_leaf_idx.get(), CAPACITY);
@@ -266,8 +268,8 @@ mod tests {
         let mut imt_b = empty_tree();
 
         for i in 1..=6u64 {
-            imt_a.insert(test_leaf(i)).unwrap();
-            imt_b.insert(test_leaf(i)).unwrap();
+            imt_a.insert(u64_to_32bytes_le(i)).unwrap();
+            imt_b.insert(u64_to_32bytes_le(i)).unwrap();
         }
 
         assert_eq!(imt_a.root, imt_b.root);

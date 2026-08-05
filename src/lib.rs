@@ -6,7 +6,11 @@ mod instructions;
 mod state;
 mod utils;
 
-use instructions::{hello::{self, *}, initialize::{self, *}};
+use instructions::{
+    hello::{self, *}, 
+    initialize::{self, *}, 
+    deposit::{self, *}
+};
 
 #[cfg(test)]
 mod tests;
@@ -26,6 +30,15 @@ mod quasar_hello_solana {
     #[instruction(discriminator = 1)]
     pub fn initialize(ctx: Ctx<Initialize>) -> Result<(), ProgramError> {
         // initialize::handle_initialize(&mut ctx.accounts)
-        initialize::handle_initialize(&mut ctx)
+        initialize::handle(&mut ctx)
+    }
+
+    #[instruction(discriminator = 2)]
+    pub fn deposit(
+        ctx: Ctx<Deposit>,
+        user_commitment_hash: [u8; 32],
+        total_amount: u64,
+    ) -> Result<(), ProgramError> {
+        deposit::handle(&mut ctx, user_commitment_hash, total_amount)
     }
 }

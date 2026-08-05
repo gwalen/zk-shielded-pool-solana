@@ -4,8 +4,7 @@ use quasar_lang::prelude::*;
 use crate::{
     state::{root_registry::RootRegistry, vault::Vault},
     utils::{
-        constants::{EMPTY_TREE_VALUE, ROOT_RING_BUFFER_LENGTH},
-        flatten_array::set_array_element,
+        constants::{EMPTY_TREE_VALUE, ROOT_RING_BUFFER_LENGTH}, flatten_array::set_array_element
     },
 };
 
@@ -36,9 +35,9 @@ pub struct Initialize {
     pub system_program: Program<SystemProgram>,
 }
 
-// Keep initialization work out of the generated dispatcher's 4 KiB SBF stack frame.
-// #[inline(never)]
-pub fn handle_initialize(ctx: &mut Ctx<Initialize>) -> Result<(), ProgramError> {
+// TODO: add config account that will store the signer as owner (for procol pausing, have pause flag, and is_init flag)
+// we don't [inline] this function to keep the handler stack separate from instruction entrypoint function
+pub fn handle(ctx: &mut Ctx<Initialize>) -> Result<(), ProgramError> {
     log("Initializing Shielded Pool Program");
     let root_registry = &mut ctx.accounts.root_registry;
 
