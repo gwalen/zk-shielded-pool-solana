@@ -23,7 +23,7 @@ use quasar_lang::prelude::*;
 /// but zeropod only implements its field traits for byte arrays, so the entries are flattened
 /// and indexed by hand:
 ///   roots_history: [u8; 32 * ROOT_RING_BUFFER_LENGTH] // ROOT_RING_BUFFER_LENGTH roots of 32 bytes each
-#[account(discriminator = 2, set_inner)]
+#[account(discriminator = 2)]
 #[seeds(b"root_registry")]
 pub struct RootRegistry {
     pub imt: ImtTree,
