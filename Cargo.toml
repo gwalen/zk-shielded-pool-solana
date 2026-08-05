@@ -37,12 +37,10 @@ solana-define-syscall = "5"
 # Because of config feature in the solana-poseidon crate (#[cfg(target_os = "solana")]) this is evaluates to syscall
 # sol_poseidon on-chain (off-chain it would be light_poseidon + ark_bn254)
 solana-poseidon = "4"
-# #[derive(QuasarSerialize)] emits host-only wincode codec impls that reference the
-# `wincode` crate by its bare name, and quasar-lang re-exports zeropod and
-# solana-program-error but not wincode. Major 0.4 matches quasar-lang's own dependency,
-# so the derived impls target the same traits the framework uses.
+## solana-poseidon = { path = "/Users/whale/development/workshop/crypto/solana/solana-sdk/poseidon" }
+# Needed by #[derive(QuasarSerialize)]: the macro expands to bare `wincode::` paths,
+# and quasar-lang does not re-export wincode. Major 0.4 matches quasar-lang.
 wincode = { version = "0.4", features = ["derive"] }
-# solana-poseidon = { path = "/Users/whale/development/workshop/crypto/solana/solana-sdk/poseidon" }
 
 
 [dev-dependencies]

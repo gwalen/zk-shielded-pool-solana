@@ -1,6 +1,7 @@
 use crate::utils::{
     constants::ROOT_RING_BUFFER_LENGTH,
-    imt_tree::{set_array_element, ImtTree},
+    imt_tree::ImtTree,
+    flatten_array::set_array_element,
 };
 use quasar_lang::prelude::*;
 
