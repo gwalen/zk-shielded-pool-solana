@@ -2,7 +2,10 @@ use quasar_lang::prelude::*;
 
 use crate::{
     state::{root_registry::RootRegistry, vault::Vault},
-    utils::{common::is_in_fr_range, errors::DappError, events::DepositDone, imt_tree::u64_to_32bytes_le, poseidon_hash},
+    utils::{
+        common::is_in_fr_range, errors::DappError, events::DepositDone,
+        imt_tree::u64_to_32bytes_le, poseidon_hash,
+    },
 };
 
 #[derive(Accounts)]
@@ -10,10 +13,10 @@ pub struct Deposit {
     #[account(mut)]
     pub sender: Signer,
 
-    #[account(mut)]
+    #[account(mut, address = Vault::seeds())]
     pub vault: Vault,
 
-    #[account(mut)]
+    #[account(mut, address = RootRegistry::seeds())]
     pub roots_registry: RootRegistry,
 
     pub system_program: Program<SystemProgram>,
@@ -24,6 +27,9 @@ pub fn handle(
     user_commitment_hash: [u8; 32],
     total_amount: u64,
 ) -> Result<(), ProgramError> {
+    if total_amount == 0 {
+        return Err(DappError::DepositAmountZero.into());
+    }
     if !is_in_fr_range(&user_commitment_hash) {
         return Err(DappError::PoseidonInputLargerThanModulus.into());
     }

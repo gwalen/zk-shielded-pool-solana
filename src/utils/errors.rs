@@ -4,11 +4,12 @@ use quasar_lang::prelude::*;
 pub enum DappError {
     /// Tree is full - no more leaves can be added
     TreeIsFull,
+    /// A deposit must be bigger than zero
+    DepositAmountZero,
 
     // --------------------------------------------------------------------------------------------------------
     // ---- Poseidon syscall status codes (solana-poseidon::PoseidonSyscallError) mapped to our app errors ----
     // --------------------------------------------------------------------------------------------------------
-
     /// Invalid Poseidon parameters (syscall status 1; also the collapsed "any failure" code)
     PoseidonInvalidParameters,
     /// Invalid Poseidon endianness (syscall status 2)

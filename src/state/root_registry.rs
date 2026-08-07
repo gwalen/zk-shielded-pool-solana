@@ -28,6 +28,7 @@ use quasar_lang::prelude::*;
 pub struct RootRegistry {
     pub imt: ImtTree,
     // Ring buffer representation
+    // TODO: add unit tests for ring buffer functionality
     pub roots_history: [u8; 32 * ROOT_RING_BUFFER_LENGTH],
     pub last_root_idx: u32,
     // Bump which is set by the Quasar
