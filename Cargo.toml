@@ -34,6 +34,12 @@ solana-define-syscall = "5"
 # Quasar declares zeropod = "0.3.3", which cargo resolves to 0.3.5 and breaks `amount: u64` handlers. 
 # So we have to pin the zeropod version so that wincode crates versions are the same. Unpin when quasar bumps wincode.
 zeropod = "=0.3.3"
+# Local no_std Halo2 BN254/GWC verifier only (crates/verifier). Does not pull
+# the Halo2 prover / circuit / vk-host workspace members. default-features
+# off keeps std/debug-trace out. solana-syscalls = solana-bn254 + raw
+# sol_keccak256/sol_big_mod_exp via solana-define-syscall (no solana-program;
+# that crate fights Quasar's panic_impl).
+halo2-solana-verifier = { path = "../solana-proof-generator/crates/verifier", default-features = false, features = ["solana-syscalls"] }
 
 # If target is no Solana (on-chain).
 # For host (cargo test) tests we need solana-poseidon as no syscalls are available
