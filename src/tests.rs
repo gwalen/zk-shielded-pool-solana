@@ -26,6 +26,7 @@ const PAYER: Pubkey = Pubkey::new_from_array([1; 32]);
 #[quasar_test]
 fn hello_logs_the_greeting(test: &mut Test) {
     test.add(Wallet::new().at(PAYER));
+    println!("program id: {}", test.program_id());
 
     let outcome = test.send(HelloInstruction { payer: PAYER });
     outcome.succeeds();
@@ -33,7 +34,7 @@ fn hello_logs_the_greeting(test: &mut Test) {
     // The program only logs; assert it emitted its greeting, not just that
     // the transaction succeeded.
     let logs = outcome.logs().join("\n");
-    println!("XXX logs: {logs}");
+    println!("my logs: {logs}");
     assert!(
         logs.contains("Hello, Solana!"),
         "expected the program to log its greeting, got:\n{logs}"
