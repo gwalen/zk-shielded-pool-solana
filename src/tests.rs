@@ -1,6 +1,9 @@
 use {
     crate::{
-        cpi::{DepositInstruction, HelloInstruction, InitializeInstruction},
+        cpi::{
+            DepositInstruction, HelloInstruction, InitializeInstruction, UploadProofInstruction,
+        },
+        state::proof_storage::ProofStorage,
         state::root_registry::RootRegistry,
         state::vault::Vault,
         utils::{
@@ -11,6 +14,7 @@ use {
             poseidon_hash,
         },
     },
+    quasar_lang::client::DynVec,
     quasar_test::prelude::*,
 };
 
@@ -38,6 +42,12 @@ fn hello_logs_the_greeting(test: &mut Test) {
     assert!(
         logs.contains("Hello, Solana!"),
         "expected the program to log its greeting, got:\n{logs}"
+    );
+    // BytesEvent discriminator 8, 64 0xAA bytes, then 1u64 LE.
+    const BYTES_EVENT_LOG: &str = "Program data: CKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqoBAAAAAAAAAA==";
+    assert!(
+        logs.contains(BYTES_EVENT_LOG),
+        "expected BytesEvent payload in logs, got:\n{logs}"
     );
 }
 
@@ -137,4 +147,116 @@ fn deposit_zero_lamports_fail_case(test: &mut Test) {
     assert_eq!(root_registry_after.imt.next_leaf_idx.get(), 0);
     assert_eq!(root_registry_after.imt.root, root_before);
     assert_eq!(root_registry_after.last_root_idx.get(), 0);
+}
+
+const PROOF_HASH: u64 = 7;
+
+#[quasar_test]
+fn upload_proof_writes_the_slice_into_the_fixed_buffer(test: &mut Test) {
+    test.add(Wallet::new().at(PAYER));
+
+    let (proof_address, proof_bump) =
+        test.derive_pda_with_bump(ProofStorage::seeds(&PAYER, PROOF_HASH));
+
+    test.send(UploadProofInstruction {
+        sender: PAYER,
+        proof_hash: PROOF_HASH,
+        part: 0,
+        proof: DynVec::<u8, u16>::new(vec![1u8, 2, 3, 4]),
+    })
+    .succeeds();
+
+    let stored = test.read::<ProofStorage>(proof_address);
+    assert_eq!(stored.bump, proof_bump);
+    assert_eq!(stored.proof_len.get(), 4);
+    assert_eq!(&stored.proof[..4], &[1u8, 2, 3, 4]);
+    assert!(stored.proof[4..].iter().all(|byte| *byte == 0));
+}
+
+#[quasar_test]
+fn upload_proof_overwrites_previous_bytes(test: &mut Test) {
+    test.add(Wallet::new().at(PAYER));
+    let proof_address = test.derive_pda(ProofStorage::seeds(&PAYER, PROOF_HASH));
+
+    test.send(UploadProofInstruction {
+        sender: PAYER,
+        proof_hash: PROOF_HASH,
+        part: 0,
+        proof: DynVec::<u8, u16>::new(vec![1u8, 2, 3, 4]),
+    })
+    .succeeds();
+
+    test.send(UploadProofInstruction {
+        sender: PAYER,
+        proof_hash: PROOF_HASH,
+        part: 0,
+        proof: DynVec::<u8, u16>::new(vec![9u8, 8]),
+    })
+    .succeeds();
+
+    let stored = test.read::<ProofStorage>(proof_address);
+    assert_eq!(stored.proof_len.get(), 2);
+    assert_eq!(&stored.proof[..2], &[9u8, 8]);
+    assert!(stored.proof[2..].iter().all(|byte| *byte == 0));
+}
+
+#[quasar_test]
+fn upload_proof_rejects_empty_chunk(test: &mut Test) {
+    test.add(Wallet::new().at(PAYER));
+
+    test.send(UploadProofInstruction {
+        sender: PAYER,
+        proof_hash: PROOF_HASH,
+        part: 0,
+        proof: DynVec::<u8, u16>::new(vec![]),
+    })
+    .fails_with(DappError::ProofChunkEmpty);
+}
+
+#[quasar_test]
+fn upload_proof_max_proof_length(test: &mut Test) {
+    test.add(Wallet::new().at(PAYER));
+    let proof_address = test.derive_pda(ProofStorage::seeds(&PAYER, PROOF_HASH));
+
+    test.send(UploadProofInstruction {
+        sender: PAYER,
+        proof_hash: PROOF_HASH,
+        part: 0,
+        proof: DynVec::<u8, u16>::new(vec![7u8; 900]),
+    })
+    .succeeds();
+
+    let stored = test.read::<ProofStorage>(proof_address);
+    assert_eq!(stored.proof_len.get(), 900);
+}
+
+#[quasar_test]
+fn upload_proof_appends_second_part(test: &mut Test) {
+    test.add(Wallet::new().at(PAYER));
+    let proof_address = test.derive_pda(ProofStorage::seeds(&PAYER, PROOF_HASH));
+
+    let part_0 = vec![0x11u8; 800];
+    let part_1 = vec![0x22u8; 464];
+
+    test.send(UploadProofInstruction {
+        sender: PAYER,
+        proof_hash: PROOF_HASH,
+        part: 0,
+        proof: DynVec::<u8, u16>::new(part_0.clone()),
+    })
+    .succeeds();
+
+    test.send(UploadProofInstruction {
+        sender: PAYER,
+        proof_hash: PROOF_HASH,
+        part: 1,
+        proof: DynVec::<u8, u16>::new(part_1.clone()),
+    })
+    .succeeds();
+
+    let stored = test.read::<ProofStorage>(proof_address);
+    assert_eq!(stored.proof_len.get(), 1264);
+    assert_eq!(&stored.proof[..800], part_0.as_slice());
+    assert_eq!(&stored.proof[800..1264], part_1.as_slice());
+    assert!(stored.proof[1264..].iter().all(|byte| *byte == 0));
 }

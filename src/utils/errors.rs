@@ -6,6 +6,10 @@ pub enum DappError {
     TreeIsFull,
     /// A deposit must be bigger than zero
     DepositAmountZero,
+    /// Proof chunk is empty
+    ProofChunkEmpty,
+    /// Proof bytes would exceed the 1500-byte buffer
+    ProofBufferFull,
 
     // --------------------------------------------------------------------------------------------------------
     // ---- Poseidon syscall status codes (solana-poseidon::PoseidonSyscallError) mapped to our app errors ----

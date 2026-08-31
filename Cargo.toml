@@ -65,3 +65,10 @@ quasar-svm = "=0.1.0"
 # For decoding/constructing raw SPL accounts in the low-level slot-warp
 # scenarios; matches quasar-svm 0.1.0's own spl-token major.
 spl-token = { version = "9", default-features = false, features = ["no-entrypoint"] }
+
+# Compile against the local Quasar tree (feat/events-fixed-arrays) so #[event]
+# accepts [u8; N] fields. The git revs above stay the declared source.
+[patch."https://github.com/blueshift-gg/quasar"]
+quasar-lang = { path = "../../../crypto/solana/quasar/lang" }
+quasar-spl = { path = "../../../crypto/solana/quasar/spl" }
+quasar-test = { path = "../../../crypto/solana/quasar/test" }

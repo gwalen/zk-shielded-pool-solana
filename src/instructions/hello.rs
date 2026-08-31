@@ -1,3 +1,4 @@
+use crate::utils::events::BytesEvent;
 use quasar_lang::prelude::*;
 
 /// Accounts for the hello instruction.
@@ -13,5 +14,9 @@ pub struct HelloAccountConstraints {
 pub fn handle_hello(_accounts: &mut HelloAccountConstraints) -> Result<(), ProgramError> {
     log("Hello, Solana!");
     log("Our program's Program ID: 2phbC62wekpw95XuBk4i1KX4uA8zBUWmYbiTMhicSuBV");
+    emit!(BytesEvent {
+        hash: [0xAA; 64],
+        amount: 1,
+    });
     Ok(())
 }

@@ -1400,7 +1400,6 @@ dependencies = [
 [[package]]
 name = "quasar-derive"
 version = "0.1.0"
-source = "git+https://github.com/blueshift-gg/quasar?rev=0361701#03617018c2665340abc63dc9f7becda55a25ce48"
 dependencies = [
  "heck",
  "proc-macro-crate",
@@ -1412,7 +1411,6 @@ dependencies = [
 [[package]]
 name = "quasar-idl-schema"
 version = "0.1.0"
-source = "git+https://github.com/blueshift-gg/quasar?rev=0361701#03617018c2665340abc63dc9f7becda55a25ce48"
 dependencies = [
  "semver",
  "serde",
@@ -1423,7 +1421,6 @@ dependencies = [
 [[package]]
 name = "quasar-lang"
 version = "0.1.0"
-source = "git+https://github.com/blueshift-gg/quasar?rev=0361701#03617018c2665340abc63dc9f7becda55a25ce48"
 dependencies = [
  "bs58",
  "const-crypto",
@@ -1445,7 +1442,6 @@ dependencies = [
 [[package]]
 name = "quasar-spl"
 version = "0.1.0"
-source = "git+https://github.com/blueshift-gg/quasar?rev=0361701#03617018c2665340abc63dc9f7becda55a25ce48"
 dependencies = [
  "quasar-lang",
  "solana-address 2.5.0",
@@ -1495,7 +1491,6 @@ dependencies = [
 [[package]]
 name = "quasar-test"
 version = "0.1.0"
-source = "git+https://github.com/blueshift-gg/quasar?rev=0361701#03617018c2665340abc63dc9f7becda55a25ce48"
 dependencies = [
  "base64 0.22.1",
  "quasar-lang",
@@ -1508,7 +1503,6 @@ dependencies = [
 [[package]]
 name = "quasar-test-derive"
 version = "0.1.0"
-source = "git+https://github.com/blueshift-gg/quasar?rev=0361701#03617018c2665340abc63dc9f7becda55a25ce48"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
