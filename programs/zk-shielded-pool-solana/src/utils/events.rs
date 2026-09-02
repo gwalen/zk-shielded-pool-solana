@@ -1,6 +1,6 @@
-use quasar_lang::prelude::*;
+use anchor_lang::prelude::*;
 
-#[event(discriminator= 1)]
+#[event]
 pub struct DepositDone {
     // TODO: have to log [u8; 32] arrays as Address as Quasar does not accept [u8; N] arrays in events
     pub user_commitment_hash: Address,    //  [u8; 32],
@@ -10,7 +10,7 @@ pub struct DepositDone {
 }
 
 // Tets event to check the quasar fix
-#[event(discriminator = 8)]
+#[event]
 pub struct BytesEvent {
     pub hash: [u8; 64],
     pub amount: u64,

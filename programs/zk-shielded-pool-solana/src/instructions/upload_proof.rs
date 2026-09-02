@@ -1,4 +1,4 @@
-use quasar_lang::prelude::*;
+use anchor_lang::prelude::*;
 
 use crate::{
     state::proof_storage::{ProofStorage, PROOF_BUFFER_LEN},
@@ -12,17 +12,17 @@ pub struct UploadProof {
     pub sender: Signer,
 
     #[account(
-        mut,
-        init(idempotent),
+        init_if_needed,
         payer = sender,
-        address = ProofStorage::seeds(sender.address(), proof_hash),
+        seeds = [b"proof_storage", sender.address().as_ref(), proof_hash.to_le_bytes()],
+        bump,
     )]
     pub proof_account: Account<ProofStorage>,
 
-    pub system_program: Program<SystemProgram>,
+    pub system_program: Program<System>,
 }
 
-pub fn handle(ctx: &mut Ctx<UploadProof>, part: u8, proof: &[u8]) -> Result<(), ProgramError> {
+pub fn handle(ctx: &mut Context<UploadProof>, part: u8, proof: &[u8]) -> Result<()> {
     if proof.is_empty() {
         return Err(DappError::ProofChunkEmpty.into());
     }

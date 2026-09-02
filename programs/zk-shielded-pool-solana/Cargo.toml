@@ -1,0 +1,74 @@
+[package]
+name = "zk-shielded-pool-solana"
+version = "0.1.0"
+edition.workspace = true
+rust-version.workspace = true
+
+# cargo-build-sbf sets cfg(target_os = "solana"); rustc 1.80+ warns unless we declare it.
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ['cfg(target_os, values("solana"))'] }
+
+[lib]
+crate-type = ["cdylib", "lib"]
+
+[features]
+# alloc = []
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-log-ix-name = []
+idl-build = []
+profile = ["anchor-v2-testing/profile"]
+
+[dependencies]
+# Quasar 0.1.0-release, pinned by rev: crates.io still hosts 0.0.0
+# placeholders for quasar-lang/quasar-cli, so the release line installs from
+# git. Keep this rev in lockstep with the CLI rev installed by
+# .github/workflows/quasar.yml.
+# quasar-lang = { git = "https://github.com/blueshift-gg/quasar", rev = "0361701" }
+# quasar-spl = { git = "https://github.com/blueshift-gg/quasar", rev = "0361701" }
+anchor-lang = { git = "https://github.com/otter-sec/anchor.git", branch = "anchor-next" }
+anchor-spl = { git = "https://github.com/otter-sec/anchor.git", branch = "anchor-next" }
+# Nested Pod types (ImtTree inside RootRegistry) need the derive macros in
+# this crate. Transitive bytemuck from anchor-lang is not enough for
+# #[derive(bytemuck::Pod)]. Same pattern as Anchor v2's own test programs.
+# min_const_generics: Pod/Zeroable for every [T; N], not only the hand-listed
+# sizes. Needed for [u8; 640] (frontiers), [u8; 1500] (proof), [u8; 3200]
+# (roots_history). Default bytemuck impls skip those N values.
+bytemuck = { version = "1", features = ["derive", "min_const_generics"] }
+solana-instruction = { version = "3.1.10" }
+# We need raw syscall access for poseidon hash on-chain, can't use solana-poseidon crate because it is not no-std compatible
+# Major 5 matches quasar-lang's own dependency
+solana-define-syscall = "5"
+# Pinned: zeropod 0.3.4+ uses wincode 0.5, but quasar-lang's serialization of instruction args like u64 still requires wincode 0.4. 
+# Quasar declares zeropod = "0.3.3", which cargo resolves to 0.3.5 and breaks `amount: u64` handlers. 
+# So we have to pin the zeropod version so that wincode crates versions are the same. Unpin when quasar bumps wincode.
+# zeropod = "=0.3.3"
+# Local no_std Halo2 BN254/GWC verifier only (crates/verifier). Does not pull
+# the Halo2 prover / circuit / vk-host workspace members. default-features
+# off keeps std/debug-trace out. solana-syscalls = solana-bn254 + raw
+# sol_keccak256/sol_big_mod_exp via solana-define-syscall (no solana-program;
+# that crate fights Quasar's panic_impl).
+# halo2-solana-verifier = { path = "../solana-proof-generator/crates/verifier", default-features = false, features = ["solana-syscalls"] }
+
+# If target is no Solana (on-chain).
+# For host (cargo test) tests we need solana-poseidon as no syscalls are available
+[target.'cfg(not(target_os = "solana"))'.dependencies]
+# Because of config feature in the solana-poseidon crate (#[cfg(target_os = "solana")]) this is evaluates to syscall
+# sol_poseidon on-chain (off-chain it would be light_poseidon + ark_bn254)
+solana-poseidon = "4"
+## solana-poseidon = { path = "/Users/whale/development/workshop/crypto/solana/solana-sdk/poseidon" } # for local testing
+# Needed by #[derive(QuasarSerialize)]: the macro expands to bare `wincode::` paths,
+# and quasar-lang does not re-export wincode. Major 0.4 matches quasar-lang / zeropod 0.3.3 (see pin above).
+# wincode = { version = "0.4", features = ["derive"] }
+
+
+[dev-dependencies]
+anchor-v2-testing = { git = "https://github.com/otter-sec/anchor.git", branch = "anchor-next" }
+
+# For decoding/constructing raw SPL accounts in the low-level slot-warp
+# scenarios; matches quasar-svm 0.1.0's own spl-token major.
+# ??? still needed in anchorv2 ?
+spl-token = { version = "9", default-features = false, features = ["no-entrypoint"] }
+
+

@@ -1,4 +1,4 @@
-use quasar_lang::prelude::*;
+use anchor_lang::prelude::*;
 
 use crate::{
     state::{root_registry::RootRegistry, vault::Vault},
@@ -13,20 +13,20 @@ pub struct Deposit {
     #[account(mut)]
     pub sender: Signer,
 
-    #[account(mut, address = Vault::seeds())]
-    pub vault: Vault,
+    #[account(mut, seeds = [b"vault"], bump = vault.bump)]
+    pub vault: Account<Vault>,
 
-    #[account(mut, address = RootRegistry::seeds())]
-    pub roots_registry: RootRegistry,
+    #[account(mut, seeds = [b"root_registry"], bump = roots_registry.bump)]
+    pub roots_registry: Account<RootRegistry>,
 
-    pub system_program: Program<SystemProgram>,
+    pub system_program: Program<System>,
 }
 
 pub fn handle(
-    ctx: &mut Ctx<Deposit>,
+    ctx: &mut Context<Deposit>,
     user_commitment_hash: [u8; 32],
     total_amount: u64,
-) -> Result<(), ProgramError> {
+) -> Result<()> {
     if total_amount == 0 {
         return Err(DappError::DepositAmountZero.into());
     }
@@ -39,10 +39,12 @@ pub fn handle(
         poseidon_hash::hash2(user_commitment_hash, u64_to_32bytes_le(total_amount))?;
     let new_root = roots_registry.insert(deposit_commitment_hash)?;
 
-    ctx.accounts
-        .system_program
-        .transfer(&ctx.accounts.sender, &ctx.accounts.vault, total_amount)
-        .invoke()?;
+    let cpi_accounts = system_program::Transfer {
+        from: ctx.accounts.sender.cpi_handle_mut(), // TODO: this is wired, so AI thingy
+        to: ctx.accounts.vault.cpi_handle_mut(),
+    };
+    let cpi_ctx = CpiContext::new(ctx.accounts.system_program.address(), cpi_accounts);
+    system_program::transfer(cpi_ctx, total_amount)?;
 
     emit!(DepositDone {
         user_commitment_hash: Address::from(user_commitment_hash),

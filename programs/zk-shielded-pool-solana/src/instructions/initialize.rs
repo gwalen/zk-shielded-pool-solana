@@ -1,44 +1,45 @@
-// #![allow(dead_code)]
-use quasar_lang::prelude::*;
+use anchor_lang::prelude::*;
 
 use crate::{
     state::{root_registry::RootRegistry, vault::Vault},
     utils::{
-        constants::{EMPTY_TREE_VALUE, ROOT_RING_BUFFER_LENGTH}, flatten_array::set_array_element
+        constants::{EMPTY_TREE_VALUE, ROOT_RING_BUFFER_LENGTH},
+        flatten_array::set_array_element,
     },
 };
 
-/// Accounts for the hello instruction.
-/// A payer (signer) is required to submit the transaction, but the program
-/// simply logs a greeting and the program ID.
+/// Accounts for the initialize instruction.
+/// Creates the vault and root-registry PDAs and fills the empty Merkle tree.
 #[derive(Accounts)]
 pub struct Initialize {
     #[account(mut)]
     pub signer: Signer,
 
     #[account(
-        mut,
-        init(idempotent),
+        init_if_needed,
         payer = signer,
-        address = Vault::seeds(),
+        seeds = [b"vault"],
+        bump, // TODO: later add explicit bump
     )]
     pub vault: Account<Vault>,
 
     #[account(
-        mut,
-        init(idempotent),
+        init_if_needed,
         payer = signer,
-        address = RootRegistry::seeds(),
+        seeds = [b"root_registry"],
+        bump, // TODO: later add explicit bump
     )]
     pub root_registry: Account<RootRegistry>,
 
-    pub system_program: Program<SystemProgram>,
+    pub system_program: Program<System>,
 }
 
 // TODO: add config account that will store the signer as owner (for procol pausing, have pause flag, and is_init flag)
 // we don't [inline] this function to keep the handler stack separate from instruction entrypoint function
-pub fn handle(ctx: &mut Ctx<Initialize>) -> Result<(), ProgramError> {
-    log("Initializing Shielded Pool Program");
+pub fn handle(ctx: &mut Context<Initialize>) -> Result<()> {
+    msg!("Initializing Shielded Pool Program");
+    ctx.accounts.vault.bump = ctx.bumps.vault;
+
     let root_registry = &mut ctx.accounts.root_registry;
 
     // initialize the empty tree in place with no stack allocation
