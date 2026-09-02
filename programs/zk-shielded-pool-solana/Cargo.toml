@@ -40,10 +40,7 @@ solana-instruction = { version = "3.1.10" }
 # We need raw syscall access for poseidon hash on-chain, can't use solana-poseidon crate because it is not no-std compatible
 # Major 5 matches quasar-lang's own dependency
 solana-define-syscall = "5"
-# Pinned: zeropod 0.3.4+ uses wincode 0.5, but quasar-lang's serialization of instruction args like u64 still requires wincode 0.4. 
-# Quasar declares zeropod = "0.3.3", which cargo resolves to 0.3.5 and breaks `amount: u64` handlers. 
-# So we have to pin the zeropod version so that wincode crates versions are the same. Unpin when quasar bumps wincode.
-# zeropod = "=0.3.3"
+solana-message = "3.0.1"
 # Local no_std Halo2 BN254/GWC verifier only (crates/verifier). Does not pull
 # the Halo2 prover / circuit / vk-host workspace members. default-features
 # off keeps std/debug-trace out. solana-syscalls = solana-bn254 + raw

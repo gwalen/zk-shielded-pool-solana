@@ -5,7 +5,7 @@ use {
         solana_program::instruction::Instruction,
         Discriminator, Id,
     },
-    anchor_v2_testing::{Keypair, LiteSVM, Message, Signer, VersionedMessage, VersionedTransaction},
+    anchor_v2_testing::{Keypair, LiteSVM, Signer, VersionedTransaction},
     zk_shielded_pool_solana::{
         accounts, instruction,
         state::{proof_storage::ProofStorage, root_registry::RootRegistry},
@@ -17,6 +17,8 @@ use {
             poseidon_hash,
         },
     },
+    solana_message::{v0, VersionedMessage},
+    litesvm::types::{TransactionMetadata, FailedTransactionMetadata},
 };
 
 /// Default first `#[error_code]` value. Matches Anchor v2's offset.
@@ -42,17 +44,20 @@ fn setup() -> (LiteSVM, Keypair) {
     (svm, payer)
 }
 
+#[allow(clippy::result_large_err)]
 fn send(
     svm: &mut LiteSVM,
     payer: &Keypair,
-    instruction: Instruction,
-) -> Result<
-    litesvm::types::TransactionMetadata,
-    litesvm::types::FailedTransactionMetadata,
-> {
-    let blockhash = svm.latest_blockhash();
-    let msg = Message::new_with_blockhash(&[instruction], Some(&payer.pubkey()), &blockhash);
-    let tx = VersionedTransaction::try_new(VersionedMessage::Legacy(msg), &[payer]).unwrap();
+    ix: Instruction,
+) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+    let msg = v0::Message::try_compile(
+        &payer.pubkey(),
+        &[ix],
+        &[], // LUT
+        svm.latest_blockhash(),
+    )
+    .unwrap();
+    let tx = VersionedTransaction::try_new(VersionedMessage::V0(msg), &[payer]).unwrap();
     svm.send_transaction(tx)
 }
 
@@ -60,7 +65,7 @@ fn send_ok(
     svm: &mut LiteSVM,
     payer: &Keypair,
     instruction: Instruction,
-) -> litesvm::types::TransactionMetadata {
+) -> TransactionMetadata {
     send(svm, payer, instruction).unwrap_or_else(|failure| {
         panic!(
             "transaction failed: {:?}\nlogs:\n{}",
@@ -75,7 +80,7 @@ fn dapp_error_code(error: DappError) -> u32 {
 }
 
 fn assert_custom_error(
-    result: Result<litesvm::types::TransactionMetadata, litesvm::types::FailedTransactionMetadata>,
+    result: Result<TransactionMetadata, FailedTransactionMetadata>,
     error: DappError,
 ) {
     let expected = dapp_error_code(error);
@@ -90,7 +95,7 @@ fn assert_custom_error(
     );
 }
 
-fn lamports(svm: &LiteSVM, address: Address) -> u64 {
+fn account_lamports(svm: &LiteSVM, address: Address) -> u64 {
     svm.get_account(&address)
         .map(|account| account.lamports)
         .unwrap_or(0)
@@ -99,7 +104,9 @@ fn lamports(svm: &LiteSVM, address: Address) -> u64 {
 fn read_pod<T: Discriminator + bytemuck::Pod>(svm: &LiteSVM, address: Address) -> T {
     let account = svm.get_account(&address).expect("account missing");
     let disc_len = T::DISCRIMINATOR.len();
+    // skip discriminator and read the rest of the data
     let payload = &account.data[disc_len..disc_len + core::mem::size_of::<T>()];
+    // from_bytes gives &T, so we copy and dereference it to get T (T is Copy)
     *bytemuck::from_bytes(payload)
 }
 
@@ -212,8 +219,8 @@ fn deposit_sol_happy_path() {
 
     let vault_address = vault_pda();
     let root_registry_address = root_registry_pda().0;
-    let payer_lamports_before = lamports(&svm, payer.pubkey());
-    let vault_lamports_before = lamports(&svm, vault_address);
+    let payer_lamports_before = account_lamports(&svm, payer.pubkey());
+    let vault_lamports_before = account_lamports(&svm, vault_address);
 
     let user_commitment_hash = poseidon_hash::hash2([3u8; 32], [4u8; 32]).unwrap();
     let deposit_commitment_hash =
@@ -229,11 +236,11 @@ fn deposit_sol_happy_path() {
     );
 
     assert_eq!(
-        lamports(&svm, vault_address),
+        account_lamports(&svm, vault_address),
         vault_lamports_before + DEPOSIT_LAMPORTS
     );
     assert_eq!(
-        lamports(&svm, payer.pubkey()),
+        account_lamports(&svm, payer.pubkey()),
         payer_lamports_before - DEPOSIT_LAMPORTS - deposit_meta.fee
     );
 
@@ -254,8 +261,8 @@ fn deposit_zero_lamports_fail_case() {
 
     let vault_address = vault_pda();
     let root_registry_address = root_registry_pda().0;
-    let payer_lamports_before = lamports(&svm, payer.pubkey());
-    let vault_lamports_before = lamports(&svm, vault_address);
+    let payer_lamports_before = account_lamports(&svm, payer.pubkey());
+    let vault_lamports_before = account_lamports(&svm, vault_address);
     let root_registry_before = read_pod::<RootRegistry>(&svm, root_registry_address);
     let root_before = root_registry_before.imt.root;
 
@@ -270,13 +277,13 @@ fn deposit_zero_lamports_fail_case() {
     };
     assert_custom_error(result, DappError::DepositAmountZero);
 
-    assert_eq!(lamports(&svm, vault_address), vault_lamports_before);
+    assert_eq!(account_lamports(&svm, vault_address), vault_lamports_before);
     let root_registry_after = read_pod::<RootRegistry>(&svm, root_registry_address);
     assert_eq!(root_registry_after.imt.next_leaf_idx.get(), 0);
     assert_eq!(root_registry_after.imt.root, root_before);
     assert_eq!(root_registry_after.last_root_idx.get(), 0);
     assert_eq!(
-        lamports(&svm, payer.pubkey()),
+        account_lamports(&svm, payer.pubkey()),
         payer_lamports_before - fee
     );
 }

@@ -4441,6 +4441,7 @@ dependencies = [
  "litesvm",
  "solana-define-syscall 5.2.0",
  "solana-instruction",
+ "solana-message",
  "solana-poseidon",
  "spl-token",
 ]
