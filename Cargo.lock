@@ -4438,6 +4438,7 @@ dependencies = [
  "anchor-spl",
  "anchor-v2-testing",
  "bytemuck",
+ "litesvm",
  "solana-define-syscall 5.2.0",
  "solana-instruction",
  "solana-poseidon",

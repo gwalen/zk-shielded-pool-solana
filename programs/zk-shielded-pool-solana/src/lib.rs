@@ -4,9 +4,9 @@ extern crate alloc;
 
 use anchor_lang::prelude::*;
 
-mod instructions;
-mod state;
-mod utils;
+pub mod instructions;
+pub mod state;
+pub mod utils;
 
 use instructions::{
     deposit::{self, *},
@@ -14,9 +14,6 @@ use instructions::{
     initialize::{self, *},
     upload_proof::{self, *},
 };
-
-// #[cfg(test)]
-// mod tests;
 
 declare_id!("FCrymxYUTEnXDJXdDn2E71KPxB9sBjXZCh1ezBwmUhvp");
 
@@ -29,7 +26,6 @@ pub mod zk_shielded_pool_solana {
     }
 
     pub fn initialize(ctx: &mut Context<Initialize>) -> Result<()> {
-        // initialize::handle_initialize(&mut ctx.accounts)
         initialize::handle(ctx)
     }
 

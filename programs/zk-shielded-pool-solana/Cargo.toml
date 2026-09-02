@@ -65,6 +65,9 @@ solana-poseidon = "4"
 
 [dev-dependencies]
 anchor-v2-testing = { git = "https://github.com/otter-sec/anchor.git", branch = "anchor-next" }
+# Named so tests can match on TransactionMetadata.logs and FailedTransactionMetadata.err.
+# Version follows whatever anchor-v2-testing currently pulls (0.13.x).
+litesvm = "0.13"
 
 # For decoding/constructing raw SPL accounts in the low-level slot-warp
 # scenarios; matches quasar-svm 0.1.0's own spl-token major.
