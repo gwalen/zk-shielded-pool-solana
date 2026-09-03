@@ -10,6 +10,7 @@ pub mod utils;
 
 use instructions::{
     deposit::{self, *},
+    withdraw::{self, *},
     hello::{self, *},
     initialize::{self, *},
     upload_proof::{self, *},
@@ -37,6 +38,14 @@ pub mod zk_shielded_pool_solana {
         deposit::handle(ctx, user_commitment_hash, total_amount)
     }
 
+    pub fn withdraw(
+        ctx: &mut Context<Withdraw>,
+        proof_hash: u64,
+        public_inputs: [[u8; 32]; 5],
+    ) -> Result<()> {
+        withdraw::handle(ctx, proof_hash, &public_inputs)
+    }
+
     /**
     On a real cluster, 1088 proof bytes will not fit. Rough leftover for this ix (1 signer, 4 keys):
     - packet budget: 1232
@@ -48,8 +57,9 @@ pub mod zk_shielded_pool_solana {
         ctx: &mut Context<UploadProof>,
         proof_hash: u64,
         part: u8,
+        proof_final_len: u16,
         proof: alloc::vec::Vec<u8>,
     ) -> Result<()> {
-        upload_proof::handle(ctx, part, &proof)
+        upload_proof::handle(ctx, proof_final_len, part, &proof)
     }
 }

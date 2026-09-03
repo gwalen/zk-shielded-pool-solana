@@ -15,8 +15,12 @@ pub fn handle_hello(_ctx: &mut Context<HelloAccountConstraints>) -> Result<()> {
     msg!("Hello, Solana!");
     msg!("Our program's Program ID: {}", crate::ID);
     emit!(BytesEvent {
-        hash: [0xAA; 64],
+        flag: 0x01,
+        val1: 0x1234,
+        vector: alloc::vec![0x01, 0x02, 0x03],
+        hash: [0xAA; 3],
         amount: 1,
+        hash2: [0xAA; 11],
     });
     Ok(())
 }

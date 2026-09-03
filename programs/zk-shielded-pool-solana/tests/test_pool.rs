@@ -157,6 +157,7 @@ fn upload_proof_ix(sender: Address, part: u8, proof: Vec<u8>) -> Instruction {
     instruction::UploadProof {
         proof_hash: PROOF_HASH,
         part,
+        proof_final_len: proof.len() as u16,
         proof,
     }
     .to_instruction(accounts::UploadProof {
@@ -301,7 +302,7 @@ fn upload_proof_writes_the_slice_into_the_fixed_buffer() {
 
     let stored = read_pod::<ProofStorage>(&svm, proof_address);
     assert_eq!(stored.bump, proof_bump);
-    assert_eq!(stored.proof_len.get(), 4);
+    assert_eq!(stored.proof_current_len.get(), 4);
     assert_eq!(&stored.proof[..4], &[1u8, 2, 3, 4]);
     assert!(stored.proof[4..].iter().all(|byte| *byte == 0));
 }
@@ -323,7 +324,7 @@ fn upload_proof_overwrites_previous_bytes() {
     );
 
     let stored = read_pod::<ProofStorage>(&svm, proof_address);
-    assert_eq!(stored.proof_len.get(), 2);
+    assert_eq!(stored.proof_current_len.get(), 2);
     assert_eq!(&stored.proof[..2], &[9u8, 8]);
     assert!(stored.proof[2..].iter().all(|byte| *byte == 0));
 }
@@ -354,7 +355,7 @@ fn upload_proof_max_proof_length() {
     );
 
     let stored = read_pod::<ProofStorage>(&svm, proof_address);
-    assert_eq!(stored.proof_len.get(), 900);
+    assert_eq!(stored.proof_current_len.get(), 900);
 }
 
 #[test]
@@ -377,7 +378,7 @@ fn upload_proof_appends_second_part() {
     );
 
     let stored = read_pod::<ProofStorage>(&svm, proof_address);
-    assert_eq!(stored.proof_len.get(), 1264);
+    assert_eq!(stored.proof_current_len.get(), 1264);
     assert_eq!(&stored.proof[..800], part_0.as_slice());
     assert_eq!(&stored.proof[800..1264], part_1.as_slice());
     assert!(stored.proof[1264..].iter().all(|byte| *byte == 0));

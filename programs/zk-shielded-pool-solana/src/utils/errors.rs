@@ -10,6 +10,10 @@ pub enum DappError {
     ProofChunkEmpty,
     /// Proof bytes would exceed the 1500-byte buffer
     ProofBufferFull,
+    /// Proof verifier failed
+    ProofVerifierFailed,
+    /// Invalid proof
+    InvalidProof,
 
     // --------------------------------------------------------------------------------------------------------
     // ---- Poseidon syscall status codes (solana-poseidon::PoseidonSyscallError) mapped to our app errors ----

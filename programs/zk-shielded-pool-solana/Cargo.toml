@@ -46,7 +46,7 @@ solana-message = "3.0.1"
 # off keeps std/debug-trace out. solana-syscalls = solana-bn254 + raw
 # sol_keccak256/sol_big_mod_exp via solana-define-syscall (no solana-program;
 # that crate fights Quasar's panic_impl).
-# halo2-solana-verifier = { path = "../solana-proof-generator/crates/verifier", default-features = false, features = ["solana-syscalls"] }
+halo2-solana-verifier = { path = "../../../solana-proof-generator/crates/verifier", default-features = false, features = ["solana-syscalls"] }
 
 # If target is no Solana (on-chain).
 # For host (cargo test) tests we need solana-poseidon as no syscalls are available

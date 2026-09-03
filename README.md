@@ -6,7 +6,7 @@ This Anchor v2 program implements the deposit side of a shielded SOL pool. A dep
 
 - The **vault PDA**, derived from `b"vault"`, holds deposited SOL.
 - The **root registry PDA**, derived from `b"root_registry"`, stores a depth-20 incremental Merkle tree and a 100-entry ring buffer of recent roots.
-- The **proof storage PDA**, derived from `b"proof_storage"` plus the sender address and a `proof_hash`, is a fixed 1500-byte buffer with a `proof_len` field. `upload_proof` creates it with `init_if_needed` on first use. `part == 0` writes the chunk at offset 0; any other `part` appends at the current `proof_len`. Empty chunks and writes that would exceed 1500 bytes are rejected. Each instruction carries at most 900 proof bytes so a 1264-byte fixture is two uploads.
+- The **proof storage PDA**, derived from `b"proof_storage"` plus the sender address and a `proof_hash`, is a fixed 1500-byte buffer with a `proof_len` field. It holds raw GWC proof bytes (the checked-in `proof.bin` is 1088 bytes). `upload_proof` creates it with `init_if_needed` on first use. `part == 0` writes the chunk at offset 0; any other `part` appends at the current `proof_len`. Empty chunks and writes that would exceed 1500 bytes are rejected. A 1088-byte proof does not fit in one instruction (about 995 bytes leftover after headers), so the client splits it across two `upload_proof` calls.
 - The `initialize` instruction handler creates the vault and root registry PDAs and initializes the empty tree.
 - The `deposit` instruction handler accepts a BN254 scalar-field commitment and a nonzero lamport amount. It computes `Poseidon(user_commitment_hash, total_amount)`, inserts the result into the tree, transfers the lamports from the sender to the vault, and emits `DepositDone`.
 

@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+extern crate alloc;
 
 #[event]
 pub struct DepositDone {
@@ -12,6 +13,10 @@ pub struct DepositDone {
 // Tets event to check the quasar fix
 #[event]
 pub struct BytesEvent {
-    pub hash: [u8; 64],
+    pub flag: u8,
+    pub hash: [u8; 3],
+    pub val1: u16,
     pub amount: u64,
+    pub vector: alloc::vec::Vec<u8>,
+    pub hash2: [u8; 11],
 }
