@@ -6,6 +6,8 @@ use {
         Discriminator, Id,
     },
     anchor_v2_testing::{Keypair, LiteSVM, Signer, VersionedTransaction},
+    litesvm::types::{FailedTransactionMetadata, TransactionMetadata},
+    solana_message::{v0, VersionedMessage},
     zk_shielded_pool_solana::{
         accounts, instruction,
         state::{proof_storage::ProofStorage, root_registry::RootRegistry},
@@ -17,8 +19,6 @@ use {
             poseidon_hash,
         },
     },
-    solana_message::{v0, VersionedMessage},
-    litesvm::types::{TransactionMetadata, FailedTransactionMetadata},
 };
 
 /// Default first `#[error_code]` value. Matches Anchor v2's offset.
@@ -30,12 +30,35 @@ const AIRDROP_LAMPORTS: u64 = 10_000_000_000;
 const DEPOSIT_LAMPORTS: u64 = 1_250_000_000;
 const PROOF_HASH: u64 = 7;
 
+/// Checked-in GWC proof (`solana-proof-generator/fixtures/proof.bin`).
+const CHECKED_IN_PROOF_LEN: usize = 1088;
+/// First `upload_proof` chunk. One instruction has about 995 bytes leftover after headers.
+const PROOF_UPLOAD_PART0_LEN: usize = 800;
+/// Five 32-byte public inputs (`solana-proof-generator/fixtures/public_inputs.bin`).
+const CHECKED_IN_PUBLIC_INPUTS_LEN: usize = 160;
+const PUBLIC_INPUT_COUNT: usize = 5;
+/// Same CU cap the Mollusk verifier harness uses (`SOLANA_TRANSACTION_CU_LIMIT`).
+const VERIFY_COMPUTE_UNIT_LIMIT: u32 = 1_400_000;
+/// Same heap the Mollusk verifier harness uses. Default 32 KiB overflows in `verify_gwc`.
+const VERIFY_HEAP_FRAME_BYTES: u32 = 64 * 1024;
+const COMPUTE_BUDGET_PROGRAM_ID: Address =
+    anchor_lang::address!("ComputeBudget111111111111111111111111111111");
+// This is agave_feature_set::enable_big_mod_exp_syscall::ID. LiteSVM 0.13.1's
+// mainnet snapshot does not include it yet.
+const ENABLE_BIG_MOD_EXP_SYSCALL_ID: Address =
+    anchor_lang::address!("EBq48m8irRKuE7ZnMTLvLg2UuGSqhe8s8oMqnmja1fJw");
+
 fn program_id() -> Address {
     zk_shielded_pool_solana::id()
 }
 
 fn setup() -> (LiteSVM, Keypair) {
-    let mut svm = anchor_v2_testing::svm();
+    let mut feature_set = LiteSVM::mainnet_feature_set();
+    feature_set.activate(&ENABLE_BIG_MOD_EXP_SYSCALL_ID, 0);
+
+    // Set the feature before rebuilding the runtime. That puts
+    // sol_big_mod_exp in the syscall table used by the loaded program.
+    let mut svm = LiteSVM::new().with_feature_set(feature_set).with_builtins();
     let bytes = include_bytes!("../../../target/deploy/zk_shielded_pool_solana.so");
     svm.add_program(program_id(), bytes).unwrap();
 
@@ -48,11 +71,11 @@ fn setup() -> (LiteSVM, Keypair) {
 fn send(
     svm: &mut LiteSVM,
     payer: &Keypair,
-    ix: Instruction,
+    ixs: &[Instruction],
 ) -> Result<TransactionMetadata, FailedTransactionMetadata> {
     let msg = v0::Message::try_compile(
         &payer.pubkey(),
-        &[ix],
+        ixs,
         &[], // LUT
         svm.latest_blockhash(),
     )
@@ -61,12 +84,16 @@ fn send(
     svm.send_transaction(tx)
 }
 
-fn send_ok(
+fn send_ok(svm: &mut LiteSVM, payer: &Keypair, instruction: Instruction) -> TransactionMetadata {
+    send_ok_many(svm, payer, &[instruction])
+}
+
+fn send_ok_many(
     svm: &mut LiteSVM,
     payer: &Keypair,
-    instruction: Instruction,
+    instructions: &[Instruction],
 ) -> TransactionMetadata {
-    send(svm, payer, instruction).unwrap_or_else(|failure| {
+    send(svm, payer, instructions).unwrap_or_else(|failure| {
         panic!(
             "transaction failed: {:?}\nlogs:\n{}",
             failure.err,
@@ -153,11 +180,11 @@ fn deposit_ix(sender: Address, user_commitment_hash: [u8; 32], total_amount: u64
     })
 }
 
-fn upload_proof_ix(sender: Address, part: u8, proof: Vec<u8>) -> Instruction {
+fn upload_proof_ix(sender: Address, part: u8, proof_final_len: u16, proof: Vec<u8>) -> Instruction {
     instruction::UploadProof {
         proof_hash: PROOF_HASH,
         part,
-        proof_final_len: proof.len() as u16,
+        proof_final_len,
         proof,
     }
     .to_instruction(accounts::UploadProof {
@@ -165,6 +192,41 @@ fn upload_proof_ix(sender: Address, part: u8, proof: Vec<u8>) -> Instruction {
         proof_account: proof_pda(&sender).0,
         system_program: System::id(),
     })
+}
+
+fn withdraw_ix(sender: Address, public_inputs: [[u8; 32]; 5]) -> Instruction {
+    instruction::Withdraw {
+        proof_hash: PROOF_HASH,
+        public_inputs,
+    }
+    .to_instruction(accounts::Withdraw {
+        sender,
+        vault: vault_pda(),
+        roots_registry: root_registry_pda().0,
+        proof_account: proof_pda(&sender).0,
+        system_program: System::id(),
+    })
+}
+
+fn compute_budget_ix(discriminator: u8, value: u32) -> Instruction {
+    // Byte 0 selects the compute-budget operation. Bytes 1..5 contain its
+    // u32 value in little-endian order.
+    let mut data = Vec::with_capacity(5);
+    data.push(discriminator);
+    data.extend_from_slice(&value.to_le_bytes());
+    Instruction {
+        program_id: COMPUTE_BUDGET_PROGRAM_ID,
+        accounts: vec![],
+        data,
+    }
+}
+
+fn set_compute_unit_limit_ix(units: u32) -> Instruction {
+    compute_budget_ix(2, units)
+}
+
+fn request_heap_frame_ix(bytes: u32) -> Instruction {
+    compute_budget_ix(1, bytes)
 }
 
 #[test]
@@ -270,7 +332,7 @@ fn deposit_zero_lamports_fail_case() {
     let result = send(
         &mut svm,
         &payer,
-        deposit_ix(payer.pubkey(), u64_to_32bytes_le(7), 0),
+        &[deposit_ix(payer.pubkey(), u64_to_32bytes_le(7), 0)],
     );
     let fee = match &result {
         Err(failure) => failure.meta.fee,
@@ -297,7 +359,7 @@ fn upload_proof_writes_the_slice_into_the_fixed_buffer() {
     send_ok(
         &mut svm,
         &payer,
-        upload_proof_ix(payer.pubkey(), 0, vec![1u8, 2, 3, 4]),
+        upload_proof_ix(payer.pubkey(), 0, 4, vec![1u8, 2, 3, 4]),
     );
 
     let stored = read_pod::<ProofStorage>(&svm, proof_address);
@@ -315,12 +377,12 @@ fn upload_proof_overwrites_previous_bytes() {
     send_ok(
         &mut svm,
         &payer,
-        upload_proof_ix(payer.pubkey(), 0, vec![1u8, 2, 3, 4]),
+        upload_proof_ix(payer.pubkey(), 0, 4, vec![1u8, 2, 3, 4]),
     );
     send_ok(
         &mut svm,
         &payer,
-        upload_proof_ix(payer.pubkey(), 0, vec![9u8, 8]),
+        upload_proof_ix(payer.pubkey(), 0, 2, vec![9u8, 8]),
     );
 
     let stored = read_pod::<ProofStorage>(&svm, proof_address);
@@ -337,7 +399,7 @@ fn upload_proof_rejects_empty_chunk() {
         send(
             &mut svm,
             &payer,
-            upload_proof_ix(payer.pubkey(), 0, vec![]),
+            &[upload_proof_ix(payer.pubkey(), 0, 0, vec![])],
         ),
         DappError::ProofChunkEmpty,
     );
@@ -351,7 +413,7 @@ fn upload_proof_max_proof_length() {
     send_ok(
         &mut svm,
         &payer,
-        upload_proof_ix(payer.pubkey(), 0, vec![7u8; 900]),
+        upload_proof_ix(payer.pubkey(), 0, 900, vec![7u8; 900]),
     );
 
     let stored = read_pod::<ProofStorage>(&svm, proof_address);
@@ -369,12 +431,12 @@ fn upload_proof_appends_second_part() {
     send_ok(
         &mut svm,
         &payer,
-        upload_proof_ix(payer.pubkey(), 0, part_0.clone()),
+        upload_proof_ix(payer.pubkey(), 0, 800, part_0.clone()),
     );
     send_ok(
         &mut svm,
         &payer,
-        upload_proof_ix(payer.pubkey(), 1, part_1.clone()),
+        upload_proof_ix(payer.pubkey(), 1, 464, part_1.clone()),
     );
 
     let stored = read_pod::<ProofStorage>(&svm, proof_address);
@@ -382,4 +444,68 @@ fn upload_proof_appends_second_part() {
     assert_eq!(&stored.proof[..800], part_0.as_slice());
     assert_eq!(&stored.proof[800..1264], part_1.as_slice());
     assert!(stored.proof[1264..].iter().all(|byte| *byte == 0));
+}
+
+#[test]
+fn withdraw_accepts_checked_in_proof() {
+    let (mut svm, payer) = setup();
+    send_ok(&mut svm, &payer, initialize_ix(payer.pubkey()));
+
+    let proof = include_bytes!("../../../../solana-proof-generator/fixtures/proof.bin");
+    assert_eq!(proof.len(), CHECKED_IN_PROOF_LEN);
+
+    send_ok(
+        &mut svm,
+        &payer,
+        upload_proof_ix(
+            payer.pubkey(),
+            0,
+            CHECKED_IN_PROOF_LEN as u16,
+            proof[..PROOF_UPLOAD_PART0_LEN].to_vec(),
+        ),
+    );
+    send_ok(
+        &mut svm,
+        &payer,
+        upload_proof_ix(
+            payer.pubkey(),
+            1,
+            CHECKED_IN_PROOF_LEN as u16,
+            proof[PROOF_UPLOAD_PART0_LEN..].to_vec(),
+        ),
+    );
+
+    let stored = read_pod::<ProofStorage>(&svm, proof_pda(&payer.pubkey()).0);
+    assert_eq!(
+        stored.proof_current_len.get() as usize,
+        CHECKED_IN_PROOF_LEN
+    );
+    assert_eq!(&stored.proof[..CHECKED_IN_PROOF_LEN], &proof[..]);
+
+    let public_inputs_bytes =
+        include_bytes!("../../../../solana-proof-generator/fixtures/public_inputs.bin");
+    assert_eq!(public_inputs_bytes.len(), CHECKED_IN_PUBLIC_INPUTS_LEN);
+    let mut public_inputs = [[0u8; 32]; PUBLIC_INPUT_COUNT];
+    for (dst, chunk) in public_inputs
+        .iter_mut()
+        .zip(public_inputs_bytes.chunks_exact(32))
+    {
+        dst.copy_from_slice(chunk);
+    }
+
+    let meta = send_ok_many(
+        &mut svm,
+        &payer,
+        &[
+            set_compute_unit_limit_ix(VERIFY_COMPUTE_UNIT_LIMIT),
+            request_heap_frame_ix(VERIFY_HEAP_FRAME_BYTES),
+            withdraw_ix(payer.pubkey(), public_inputs),
+        ],
+    );
+    let logs = meta.logs.join("\n");
+    println!("withdraw logs: {logs}");
+    assert!(
+        logs.contains("Proof verified"),
+        "expected the program to log Proof verified, got:\n{logs}"
+    );
 }
