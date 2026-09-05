@@ -16,6 +16,7 @@ use {
             errors::DappError,
             flatten_array::get_array_element,
             imt_tree::{u64_to_32bytes_le, ImtTree},
+            merkle_proof::MerkleProof,
             poseidon_hash,
         },
     },
@@ -207,10 +208,16 @@ fn upload_proof_ix(
     })
 }
 
-fn withdraw_ix(sender: Address, public_inputs: [[u8; 32]; 5], proof_hash: [u8; 32]) -> Instruction {
+fn withdraw_ix(
+    sender: Address,
+    public_inputs: [[u8; 32]; 5],
+    proof_hash: [u8; 32],
+    merkle_proof: MerkleProof,
+) -> Instruction {
     instruction::Withdraw {
         proof_hash,
         public_inputs,
+        merkle_proof,
     }
     .to_instruction(accounts::Withdraw {
         sender,
@@ -578,6 +585,7 @@ fn withdraw_accepts_checked_in_proof() {
         include_bytes!("../../../../solana-proof-generator/fixtures/public_inputs.bin");
     assert_eq!(public_inputs_bytes.len(), CHECKED_IN_PUBLIC_INPUTS_LEN);
     let mut public_inputs = [[0u8; 32]; PUBLIC_INPUT_COUNT];
+    // TODO: ask what this does ??
     for (dst, chunk) in public_inputs
         .iter_mut()
         .zip(public_inputs_bytes.chunks_exact(32))
@@ -585,13 +593,15 @@ fn withdraw_accepts_checked_in_proof() {
         dst.copy_from_slice(chunk);
     }
 
+    let merkle_proof_mock = MerkleProof::new(proof_hash, vec![], vec![]);
+
     let meta = send_ok_many(
         &mut svm,
         &payer,
         &[
             set_compute_unit_limit_ix(VERIFY_COMPUTE_UNIT_LIMIT),
             request_heap_frame_ix(VERIFY_HEAP_FRAME_BYTES),
-            withdraw_ix(payer.pubkey(), public_inputs, proof_hash),
+            withdraw_ix(payer.pubkey(), public_inputs, proof_hash, merkle_proof_mock),
         ],
     );
     let logs = meta.logs.join("\n");
