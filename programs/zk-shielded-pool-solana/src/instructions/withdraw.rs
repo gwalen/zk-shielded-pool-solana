@@ -13,6 +13,7 @@ use crate::{
     },
     utils::errors::DappError,
 };
+use solana_define_syscall::definitions::sol_keccak256;
 
 /// Circuit VK compiled into program data. A caller cannot swap a different
 /// circuit. Source: solana-proof-generator/fixtures/vk.bin (749 bytes).
@@ -44,7 +45,7 @@ fn pinned_kzg_vk() -> KzgVk {
 }
 
 #[derive(Accounts)]
-#[instruction(proof_hash: u64)]
+#[instruction(proof_hash: [u8; 32])]
 pub struct Withdraw {
     #[account(mut)]
     pub sender: Signer,
@@ -58,7 +59,7 @@ pub struct Withdraw {
     #[account(
         init_if_needed,
         payer = sender,
-        seeds = [b"proof_storage", sender.address().as_ref(), proof_hash.to_le_bytes()],
+        seeds = [b"proof_storage", sender.address().as_ref(), proof_hash.as_ref()],
         bump,
     )]
     pub proof_account: Account<ProofStorage>,
@@ -68,26 +69,25 @@ pub struct Withdraw {
 
 pub fn handle(
     ctx: &mut Context<Withdraw>,
-    _proof_hash: u64,
-    public_inputs: &[[u8; 32]],
+    proof_hash: [u8; 32],       // 32 bytes
+    public_inputs: &[[u8; 32]], // 5 * 32 bytes = 160 bytes
+    // TODO: merkle proof 20 * 32 = 640 bytes
 ) -> Result<()> {
     let stored_len = ctx.accounts.proof_account.proof_current_len.get() as usize;
-    if stored_len > PROOF_BUFFER_LEN {
-        return Err(DappError::ProofBufferFull.into());
-    }
+    require!(stored_len <= PROOF_BUFFER_LEN, DappError::ProofBufferFull);
+
     let proof = ctx
         .accounts
         .proof_account
         .proof
         .get(..stored_len)
-        .ok_or(DappError::ProofBufferFull)?;
-    if proof.is_empty() {
-        return Err(DappError::ProofVerifierFailed.into());
-    }
+        .ok_or(DappError::FailedToReadProofFromStorage)?;
+    require!(!proof.is_empty(), DappError::EmptyProof);
 
-    if PINNED_KZG_VK_BYTES.len() != KZG_VK_LEN {
-        return Err(DappError::ProofVerifierFailed.into());
-    }
+    let computed_proof_hash = hash_proof(proof);
+    require!(computed_proof_hash == proof_hash, DappError::InvalidProofHash);
+
+    require!(PINNED_KZG_VK_BYTES.len() == KZG_VK_LEN, DappError::ProofVerifierFailed);
 
     let pinned_vk = PINNED_VK;
     let pinned_kzg_vk = pinned_kzg_vk();
@@ -100,11 +100,22 @@ pub fn handle(
     )
     .map_err(|_| DappError::ProofVerifierFailed)?;
 
-    if !accepted {
-        return Err(DappError::InvalidProof.into());
-    }
+    require!(accepted, DappError::InvalidProof);
 
     msg!("Proof verified");
 
     Ok(())
+}
+
+fn hash_proof(proof: &[u8]) -> [u8; 32] {
+    let mut result = [0u8; 32];
+    let vals: &[&[u8]] = &[proof];
+    // need use unsafe as sol_keccak256 is extern "C" which is considered unsafe by rust
+    unsafe {
+       sol_keccak256(
+        vals.as_ptr() as *const u8, 
+        1, // just one chunk to hash (proof array) 
+        result.as_mut_ptr())    
+    };
+    result
 }

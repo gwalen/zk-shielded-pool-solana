@@ -65,6 +65,8 @@ anchor-v2-testing = { git = "https://github.com/otter-sec/anchor.git", branch = 
 # Named so tests can match on TransactionMetadata.logs and FailedTransactionMetadata.err.
 # Version follows whatever anchor-v2-testing currently pulls (0.13.x).
 litesvm = "0.13"
+# Host Keccak256. Same bytes as on-chain sol_keccak256. `sha3` is required off-chain; without it hash() panics.
+solana-keccak-hasher = { version = "3.1", features = ["sha3"] }
 
 # For decoding/constructing raw SPL accounts in the low-level slot-warp
 # scenarios; matches quasar-svm 0.1.0's own spl-token major.

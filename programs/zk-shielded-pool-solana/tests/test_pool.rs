@@ -21,18 +21,20 @@ use {
     },
 };
 
+mod common;
+use common::utils::calculate_proof_hash;
+
 /// Default first `#[error_code]` value. Matches Anchor v2's offset.
-const ERROR_CODE_OFFSET: u32 = 6000;
+const ANCHOR_V2_ERROR_CODE_OFFSET: u32 = 6000;
 
 /// 10 SOL covers a 1.25 SOL deposit plus rent for the vault and root registry.
 const AIRDROP_LAMPORTS: u64 = 10_000_000_000;
 
 const DEPOSIT_LAMPORTS: u64 = 1_250_000_000;
-const PROOF_HASH: u64 = 7;
 
 /// Checked-in GWC proof (`solana-proof-generator/fixtures/proof.bin`).
 const CHECKED_IN_PROOF_LEN: usize = 1088;
-/// First `upload_proof` chunk. One instruction has about 995 bytes leftover after headers.
+/// First `upload_proof` chunk. One instruction has about 971 bytes leftover after headers.
 const PROOF_UPLOAD_PART0_LEN: usize = 800;
 /// Five 32-byte public inputs (`solana-proof-generator/fixtures/public_inputs.bin`).
 const CHECKED_IN_PUBLIC_INPUTS_LEN: usize = 160;
@@ -58,9 +60,14 @@ fn setup() -> (LiteSVM, Keypair) {
 
     // Set the feature before rebuilding the runtime. That puts
     // sol_big_mod_exp in the syscall table used by the loaded program.
-    let mut svm = LiteSVM::new().with_feature_set(feature_set).with_builtins();
-    let bytes = include_bytes!("../../../target/deploy/zk_shielded_pool_solana.so");
-    svm.add_program(program_id(), bytes).unwrap();
+    // `svm()` is LiteSVM::new(), plus tracing when `--features profile` is on.
+    let mut svm = anchor_v2_testing::svm()
+        .with_feature_set(feature_set)
+        .with_builtins();
+    let zk_shieleded_pool_binary =
+        include_bytes!("../../../target/deploy/zk_shielded_pool_solana.so");
+    svm.add_program(program_id(), zk_shieleded_pool_binary)
+        .unwrap();
 
     let payer = Keypair::new();
     svm.airdrop(&payer.pubkey(), AIRDROP_LAMPORTS).unwrap();
@@ -103,7 +110,7 @@ fn send_ok_many(
 }
 
 fn dapp_error_code(error: DappError) -> u32 {
-    error as u32 + ERROR_CODE_OFFSET
+    error as u32 + ANCHOR_V2_ERROR_CODE_OFFSET
 }
 
 fn assert_custom_error(
@@ -145,9 +152,8 @@ fn root_registry_pda() -> (Address, u8) {
     find_pda(&[b"root_registry"])
 }
 
-fn proof_pda(sender: &Address) -> (Address, u8) {
-    let proof_hash_bytes = PROOF_HASH.to_le_bytes();
-    find_pda(&[b"proof_storage", sender.as_ref(), &proof_hash_bytes])
+fn proof_pda(sender: &Address, proof_hash: [u8; 32]) -> (Address, u8) {
+    find_pda(&[b"proof_storage", sender.as_ref(), proof_hash.as_ref()])
 }
 
 fn find_pda(seeds: &[&[u8]]) -> (Address, u8) {
@@ -180,30 +186,37 @@ fn deposit_ix(sender: Address, user_commitment_hash: [u8; 32], total_amount: u64
     })
 }
 
-fn upload_proof_ix(sender: Address, part: u8, proof_final_len: u16, proof: Vec<u8>) -> Instruction {
+fn upload_proof_ix(
+    sender: Address,
+    part: u8,
+    proof_final_len: u16,
+    proof_part: Vec<u8>,
+    proof_hash: [u8; 32],
+    proof_pda: Address,
+) -> Instruction {
     instruction::UploadProof {
-        proof_hash: PROOF_HASH,
+        proof_hash,
         part,
         proof_final_len,
-        proof,
+        proof: proof_part,
     }
     .to_instruction(accounts::UploadProof {
         sender,
-        proof_account: proof_pda(&sender).0,
+        proof_account: proof_pda,
         system_program: System::id(),
     })
 }
 
-fn withdraw_ix(sender: Address, public_inputs: [[u8; 32]; 5]) -> Instruction {
+fn withdraw_ix(sender: Address, public_inputs: [[u8; 32]; 5], proof_hash: [u8; 32]) -> Instruction {
     instruction::Withdraw {
-        proof_hash: PROOF_HASH,
+        proof_hash,
         public_inputs,
     }
     .to_instruction(accounts::Withdraw {
         sender,
         vault: vault_pda(),
         roots_registry: root_registry_pda().0,
-        proof_account: proof_pda(&sender).0,
+        proof_account: proof_pda(&sender, proof_hash).0,
         system_program: System::id(),
     })
 }
@@ -354,52 +367,94 @@ fn deposit_zero_lamports_fail_case() {
 #[test]
 fn upload_proof_writes_the_slice_into_the_fixed_buffer() {
     let (mut svm, payer) = setup();
-    let (proof_address, proof_bump) = proof_pda(&payer.pubkey());
+    let proof_mock = vec![1u8, 2, 3, 4];
+    let proof_hash = calculate_proof_hash(&proof_mock);
+    let (proof_address, proof_bump) = proof_pda(&payer.pubkey(), proof_hash);
 
     send_ok(
         &mut svm,
         &payer,
-        upload_proof_ix(payer.pubkey(), 0, 4, vec![1u8, 2, 3, 4]),
+        upload_proof_ix(
+            payer.pubkey(),
+            0,
+            proof_mock.len() as u16,
+            proof_mock.clone(),
+            proof_hash,
+            proof_address,
+        ),
     );
 
     let stored = read_pod::<ProofStorage>(&svm, proof_address);
     assert_eq!(stored.bump, proof_bump);
-    assert_eq!(stored.proof_current_len.get(), 4);
-    assert_eq!(&stored.proof[..4], &[1u8, 2, 3, 4]);
-    assert!(stored.proof[4..].iter().all(|byte| *byte == 0));
+    assert_eq!(stored.proof_current_len.get(), proof_mock.len() as u16);
+    assert_eq!(&stored.proof[..proof_mock.len()], proof_mock.as_slice());
+    // assert that the rest of the proof is empty (not touched)
+    assert!(stored.proof[proof_mock.len()..]
+        .iter()
+        .all(|byte| *byte == 0));
 }
 
 #[test]
 fn upload_proof_overwrites_previous_bytes() {
     let (mut svm, payer) = setup();
-    let proof_address = proof_pda(&payer.pubkey()).0;
+    let first_chunk = vec![1u8, 2, 3, 4];
+    let second_chunk = vec![9u8, 8];
+    // Same account, so both writes use the first chunk's hash.
+    let proof_hash = calculate_proof_hash(&first_chunk);
+    let proof_address = proof_pda(&payer.pubkey(), proof_hash).0;
 
     send_ok(
         &mut svm,
         &payer,
-        upload_proof_ix(payer.pubkey(), 0, 4, vec![1u8, 2, 3, 4]),
+        upload_proof_ix(
+            payer.pubkey(),
+            0,
+            first_chunk.len() as u16,
+            first_chunk,
+            proof_hash,
+            proof_address,
+        ),
     );
     send_ok(
         &mut svm,
         &payer,
-        upload_proof_ix(payer.pubkey(), 0, 2, vec![9u8, 8]),
+        upload_proof_ix(
+            payer.pubkey(),
+            0,
+            second_chunk.len() as u16,
+            second_chunk.clone(),
+            proof_hash,
+            proof_address,
+        ),
     );
 
     let stored = read_pod::<ProofStorage>(&svm, proof_address);
-    assert_eq!(stored.proof_current_len.get(), 2);
-    assert_eq!(&stored.proof[..2], &[9u8, 8]);
-    assert!(stored.proof[2..].iter().all(|byte| *byte == 0));
+    assert_eq!(stored.proof_current_len.get(), second_chunk.len() as u16);
+    assert_eq!(&stored.proof[..second_chunk.len()], second_chunk.as_slice());
+    assert!(stored.proof[second_chunk.len()..]
+        .iter()
+        .all(|byte| *byte == 0));
 }
 
 #[test]
 fn upload_proof_rejects_empty_chunk() {
     let (mut svm, payer) = setup();
+    let proof_mock = Vec::<u8>::new();
+    let proof_hash = calculate_proof_hash(&proof_mock);
+    let proof_address = proof_pda(&payer.pubkey(), proof_hash).0;
 
     assert_custom_error(
         send(
             &mut svm,
             &payer,
-            &[upload_proof_ix(payer.pubkey(), 0, 0, vec![])],
+            &[upload_proof_ix(
+                payer.pubkey(),
+                0,
+                0,
+                proof_mock,
+                proof_hash,
+                proof_address,
+            )],
         ),
         DappError::ProofChunkEmpty,
     );
@@ -408,42 +463,73 @@ fn upload_proof_rejects_empty_chunk() {
 #[test]
 fn upload_proof_max_proof_length() {
     let (mut svm, payer) = setup();
-    let proof_address = proof_pda(&payer.pubkey()).0;
+    let proof_mock = vec![7u8; 900];
+    let proof_hash = calculate_proof_hash(&proof_mock);
+    let proof_address = proof_pda(&payer.pubkey(), proof_hash).0;
 
     send_ok(
         &mut svm,
         &payer,
-        upload_proof_ix(payer.pubkey(), 0, 900, vec![7u8; 900]),
+        upload_proof_ix(
+            payer.pubkey(),
+            0,
+            proof_mock.len() as u16,
+            proof_mock.clone(),
+            proof_hash,
+            proof_address,
+        ),
     );
 
     let stored = read_pod::<ProofStorage>(&svm, proof_address);
-    assert_eq!(stored.proof_current_len.get(), 900);
+    assert_eq!(stored.proof_current_len.get(), proof_mock.len() as u16);
 }
 
 #[test]
-fn upload_proof_appends_second_part() {
+fn upload_proof_append_second_part_after_first() {
     let (mut svm, payer) = setup();
-    let proof_address = proof_pda(&payer.pubkey()).0;
-
     let part_0 = vec![0x11u8; 800];
     let part_1 = vec![0x22u8; 464];
+    let mut full_proof = part_0.clone();
+    full_proof.extend_from_slice(&part_1);
+    let proof_hash = calculate_proof_hash(&full_proof);
+    let proof_address = proof_pda(&payer.pubkey(), proof_hash).0;
 
     send_ok(
         &mut svm,
         &payer,
-        upload_proof_ix(payer.pubkey(), 0, 800, part_0.clone()),
+        upload_proof_ix(
+            payer.pubkey(),
+            0,
+            part_0.len() as u16,
+            part_0.clone(),
+            proof_hash,
+            proof_address,
+        ),
     );
     send_ok(
         &mut svm,
         &payer,
-        upload_proof_ix(payer.pubkey(), 1, 464, part_1.clone()),
+        upload_proof_ix(
+            payer.pubkey(),
+            1,
+            part_1.len() as u16,
+            part_1.clone(),
+            proof_hash,
+            proof_address,
+        ),
     );
 
     let stored = read_pod::<ProofStorage>(&svm, proof_address);
-    assert_eq!(stored.proof_current_len.get(), 1264);
-    assert_eq!(&stored.proof[..800], part_0.as_slice());
-    assert_eq!(&stored.proof[800..1264], part_1.as_slice());
-    assert!(stored.proof[1264..].iter().all(|byte| *byte == 0));
+    assert_eq!(stored.proof_current_len.get(), full_proof.len() as u16);
+    assert_eq!(&stored.proof[..part_0.len()], part_0.as_slice());
+    assert_eq!(
+        &stored.proof[part_0.len()..full_proof.len()],
+        part_1.as_slice()
+    );
+    // assert that the rest of the proof account is empty (not touched)
+    assert!(stored.proof[full_proof.len()..]
+        .iter()
+        .all(|byte| *byte == 0));
 }
 
 #[test]
@@ -453,6 +539,8 @@ fn withdraw_accepts_checked_in_proof() {
 
     let proof = include_bytes!("../../../../solana-proof-generator/fixtures/proof.bin");
     assert_eq!(proof.len(), CHECKED_IN_PROOF_LEN);
+    let proof_hash = calculate_proof_hash(proof);
+    let proof_address = proof_pda(&payer.pubkey(), proof_hash).0;
 
     send_ok(
         &mut svm,
@@ -462,6 +550,8 @@ fn withdraw_accepts_checked_in_proof() {
             0,
             CHECKED_IN_PROOF_LEN as u16,
             proof[..PROOF_UPLOAD_PART0_LEN].to_vec(),
+            proof_hash,
+            proof_address,
         ),
     );
     send_ok(
@@ -472,10 +562,12 @@ fn withdraw_accepts_checked_in_proof() {
             1,
             CHECKED_IN_PROOF_LEN as u16,
             proof[PROOF_UPLOAD_PART0_LEN..].to_vec(),
+            proof_hash,
+            proof_address,
         ),
     );
 
-    let stored = read_pod::<ProofStorage>(&svm, proof_pda(&payer.pubkey()).0);
+    let stored = read_pod::<ProofStorage>(&svm, proof_address);
     assert_eq!(
         stored.proof_current_len.get() as usize,
         CHECKED_IN_PROOF_LEN
@@ -499,7 +591,7 @@ fn withdraw_accepts_checked_in_proof() {
         &[
             set_compute_unit_limit_ix(VERIFY_COMPUTE_UNIT_LIMIT),
             request_heap_frame_ix(VERIFY_HEAP_FRAME_BYTES),
-            withdraw_ix(payer.pubkey(), public_inputs),
+            withdraw_ix(payer.pubkey(), public_inputs, proof_hash),
         ],
     );
     let logs = meta.logs.join("\n");

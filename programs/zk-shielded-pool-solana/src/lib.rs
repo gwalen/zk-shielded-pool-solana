@@ -40,7 +40,7 @@ pub mod zk_shielded_pool_solana {
 
     pub fn withdraw(
         ctx: &mut Context<Withdraw>,
-        proof_hash: u64,
+        proof_hash: [u8; 32],
         public_inputs: [[u8; 32]; 5],
     ) -> Result<()> {
         withdraw::handle(ctx, proof_hash, &public_inputs)
@@ -50,12 +50,12 @@ pub mod zk_shielded_pool_solana {
     On a real cluster, 1088 proof bytes will not fit. Rough leftover for this ix (1 signer, 4 keys):
     - packet budget: 1232
     - overhead (sig, header, 4 pubkeys, blockhash, compiled ix): ~237
-    - remaining for ix data: ~995
-    - ix data is disc + proof_hash(8) + part(1) + u32 len(4) + proof
+    - remaining for ix data: ~971
+    - ix data is disc + proof_hash(32) + part(1) + u16 len(2) + proof
      */
     pub fn upload_proof(
         ctx: &mut Context<UploadProof>,
-        proof_hash: u64,
+        proof_hash: [u8; 32],
         part: u8,
         proof_final_len: u16,
         proof: alloc::vec::Vec<u8>,

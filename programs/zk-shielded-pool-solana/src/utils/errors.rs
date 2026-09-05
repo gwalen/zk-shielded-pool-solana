@@ -10,8 +10,14 @@ pub enum DappError {
     ProofChunkEmpty,
     /// Proof bytes would exceed the 1500-byte buffer
     ProofBufferFull,
+    /// Failed to read proof from storage
+    FailedToReadProofFromStorage,
+    /// Proof is empty
+    EmptyProof,
     /// Proof verifier failed
     ProofVerifierFailed,
+    /// Invalid proof hash
+    InvalidProofHash,
     /// Invalid proof
     InvalidProof,
 

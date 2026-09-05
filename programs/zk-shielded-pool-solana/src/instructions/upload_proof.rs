@@ -6,7 +6,7 @@ use crate::{
 };
 
 #[derive(Accounts)]
-#[instruction(proof_hash: u64)]
+#[instruction(proof_hash: [u8; 32])]
 pub struct UploadProof {
     #[account(mut)]
     pub sender: Signer,
@@ -14,7 +14,7 @@ pub struct UploadProof {
     #[account(
         init_if_needed,
         payer = sender,
-        seeds = [b"proof_storage", sender.address().as_ref(), proof_hash.to_le_bytes()],
+        seeds = [b"proof_storage", sender.address().as_ref(), proof_hash.as_ref()],
         bump,
     )]
     pub proof_account: Account<ProofStorage>,
