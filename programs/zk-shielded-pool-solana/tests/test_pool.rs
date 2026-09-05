@@ -195,7 +195,7 @@ fn upload_proof_ix(
     proof_pda: Address,
 ) -> Instruction {
     instruction::UploadProof {
-        proof_hash,
+        _proof_hash: proof_hash,
         part,
         proof_final_len,
         proof: proof_part,

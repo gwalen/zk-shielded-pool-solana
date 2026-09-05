@@ -55,7 +55,7 @@ pub mod zk_shielded_pool_solana {
      */
     pub fn upload_proof(
         ctx: &mut Context<UploadProof>,
-        proof_hash: [u8; 32],
+        _proof_hash: [u8; 32],
         part: u8,
         proof_final_len: u16,
         proof: alloc::vec::Vec<u8>,
