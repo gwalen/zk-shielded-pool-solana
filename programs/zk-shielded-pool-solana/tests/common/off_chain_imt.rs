@@ -1,8 +1,14 @@
-use crate::imt::imt_utils::{
-    EMPTY_VALUE, TREE_DEPTH_MAX, Z_0, generate_zero_values_for_levels, poseidon_hash,
-};
 use anyhow::{Error, Result};
-use halo2_base::halo2_proofs::halo2curves::bn256::Fr;
+use halo2_base::halo2_proofs::halo2curves::{bn256::Fr, ff::PrimeField};
+use solana_poseidon::{Endianness, Parameters};
+use zk_shielded_pool_solana::utils::merkle_proof::MerkleProof;
+
+pub const Z_0: Fr = Fr::zero();
+// tree node value that was not updated yet
+pub const EMPTY_TREE_VALUE_FR: Fr = Fr::one();
+
+// 1M leafs and total size of full tree 64MB (32 bytes per leaf)
+pub const TREE_DEPTH_MAX: usize = 20;
 
 // ********************
 // This is a memory-heavy full IMT tree implementation used as a correctness
@@ -29,11 +35,14 @@ pub struct OffChainImt {
 impl OffChainImt {
     pub fn new(tree_depth: u32) -> Self {
         assert!(tree_depth > 0, "Tree depth must be greater than 0");
-        assert!(tree_depth <= TREE_DEPTH_MAX as u32, "Tree depth is too large");
+        assert!(
+            tree_depth <= TREE_DEPTH_MAX as u32,
+            "Tree depth is too large"
+        );
 
         // For tree_depth = 20 node_code ~= 2M
         let node_count = 2usize.pow(tree_depth + 1);
-        let nodes = vec![EMPTY_VALUE; node_count];
+        let nodes = vec![EMPTY_TREE_VALUE_FR; node_count];
 
         let zero_values = generate_zero_values_for_levels(tree_depth as usize);
         // We need to skip all the nodes on levels above the zero level where leafs are stored
@@ -58,7 +67,7 @@ impl OffChainImt {
 
     // Insert leaf on next unused leaf position, do not recalculate the full tree
     pub fn insert_leaf_lazy(&mut self, leaf: Fr) -> Result<()> {
-        if leaf == EMPTY_VALUE || leaf == Z_0 {
+        if leaf == EMPTY_TREE_VALUE_FR || leaf == Z_0 {
             return Err(Error::msg("Leaf value is not valid"));
         }
         if self.next_free_leaf_idx >= self.nodes.len() {
@@ -89,9 +98,14 @@ impl OffChainImt {
     }
 
     pub fn build_merkle_proof(&self, leaf: Fr) -> Result<MerkleProof> {
-        let mut proof = MerkleProof { leaf, siblings_path: Vec::new(), siblings_side: Vec::new() };
-        let leaf_idx =
-            self.find_leaf_index(leaf).ok_or_else(|| Error::msg("Leaf is not in the tree"))?;
+        let mut proof = MerkleProof {
+            leaf: fr_to_le_bytes(leaf),
+            siblings_path: Vec::new(),
+            siblings_side: Vec::new(),
+        };
+        let leaf_idx = self
+            .find_leaf_index(leaf)
+            .ok_or_else(|| Error::msg("Leaf is not in the tree"))?;
 
         let mut current_idx = leaf_idx;
         while current_idx > 1 {
@@ -101,16 +115,18 @@ impl OffChainImt {
             } else {
                 self.nodes[current_idx - 1]
             };
-            proof.siblings_path.push(sibling);
-            // side of the sibling (opposite to current node), 0 - left, 1 - right
-            proof.siblings_side.push(if is_left_leaf { 1 } else { 0 });
+            proof.siblings_path.push(fr_to_le_bytes(sibling));
+            // The current on-chain verifier hashes (sibling, current) for true.
+            // Therefore true means the sibling is on the left, despite its
+            // field comment retaining the circuit's old 0-left / 1-right rule.
+            proof.siblings_side.push(!is_left_leaf);
             current_idx /= 2; // go level up to parent idx
         }
         Ok(proof)
     }
 
     fn node(&self, idx: usize) -> Fr {
-        if self.nodes[idx] == EMPTY_VALUE {
+        if self.nodes[idx] == EMPTY_TREE_VALUE_FR {
             // unset node, fetch zero value based on level
             let node_level = self.calculate_level(idx);
             self.zero_values[node_level]
@@ -143,11 +159,54 @@ impl OffChainImt {
     }
 }
 
+pub fn fr_to_le_bytes(value: Fr) -> [u8; 32] {
+    value.to_repr()
+}
+
+pub fn fr_from_le_bytes(bytes: [u8; 32]) -> Fr {
+    Fr::from_repr(bytes).unwrap()
+}
+
+pub fn poseidon_hash(left: Fr, right: Fr) -> Fr {
+    let hash = solana_poseidon::hashv(
+        Parameters::Bn254X5,
+        Endianness::LittleEndian,
+        &[&fr_to_le_bytes(left), &fr_to_le_bytes(right)],
+    )
+    .unwrap();
+    fr_from_le_bytes(hash.to_bytes())
+}
+
+// Helper used in tests to easy get Fr from small integer values
+pub fn hash1(seed: u64) -> Fr {
+    let hash = solana_poseidon::hash(
+        Parameters::Bn254X5,
+        Endianness::LittleEndian,
+        &fr_to_le_bytes(Fr::from(seed)),
+    )
+    .unwrap();
+    fr_from_le_bytes(hash.to_bytes())
+}
+
+pub fn generate_zero_values_for_levels(tree_depth: usize) -> Vec<Fr> {
+    // zero values for each level (except root level)
+    // Example for depth 3: 0 (leaf) -> 1 (level 1) -> 2 (level 2) -> 3 (root)
+    //                         Z_0   ->    Z_1      ->  Z_2        ->  this we do not need to store in zero_values (used only for root calculation)
+    let mut zero_values = Vec::<Fr>::with_capacity(tree_depth);
+
+    zero_values.push(Z_0);
+
+    for i in 1..tree_depth {
+        let z_prev = zero_values[i - 1];
+        zero_values.push(poseidon_hash(z_prev, z_prev));
+    }
+
+    zero_values
+}
+
 #[cfg(test)]
 pub mod tests {
     use super::*;
-    use crate::circuit::constraints::poseidon::solana_poseidon_native::hash1;
-    use crate::imt::imt_utils::poseidon_hash;
 
     // ---------------------------------------------------------------------
     // Snapshot of the depth-3 reference tree (leafs = commitment(1..=8)).
@@ -262,7 +321,12 @@ pub mod tests {
         off_chain_imt.build_tree();
         for (i, expected) in FULL_DEPTH3_TREE_NODES.iter().enumerate() {
             let node_idx = i + 1;
-            assert_eq!(hex(off_chain_imt.nodes[node_idx]), *expected, "node {}", node_idx);
+            assert_eq!(
+                hex(off_chain_imt.nodes[node_idx]),
+                *expected,
+                "node {}",
+                node_idx
+            );
         }
     }
 
@@ -287,7 +351,7 @@ pub mod tests {
     fn test_insert_rejects_zero_and_one() {
         let mut off_chain_imt = OffChainImt::new(3);
         assert!(off_chain_imt.insert_leaf_lazy(Z_0).is_err());
-        assert!(off_chain_imt.insert_leaf_lazy(EMPTY_VALUE).is_err());
+        assert!(off_chain_imt.insert_leaf_lazy(EMPTY_TREE_VALUE_FR).is_err());
     }
 
     // test_tree_full — 9th insert on depth 3 → Err("Tree is full") | error
@@ -327,8 +391,58 @@ pub mod tests {
             assert_eq!(proof.siblings_path.len(), 3);
             assert_eq!(proof.siblings_side.len(), 3);
 
-            assert!(off_chain_imt.verify_merkle_proof(&proof), "proof mismatch for leaf {}", i);
+            assert_eq!(proof.leaf, fr_to_le_bytes(hash1(i)));
+            assert!(
+                proof
+                    .verify_merkle_proof(fr_to_le_bytes(off_chain_imt.root()))
+                    .unwrap(),
+                "proof mismatch for leaf {}",
+                i
+            );
         }
+    }
+
+    #[test]
+    fn test_partial_tree_proof_bytes_and_sides() {
+        let mut tree = OffChainImt::new(3);
+        for i in 1..=3 {
+            tree.insert_leaf_lazy(hash1(i)).unwrap();
+        }
+        tree.build_tree();
+        let root = fr_to_le_bytes(tree.root());
+
+        for i in 1..=3 {
+            let proof = tree.build_merkle_proof(hash1(i)).unwrap();
+            assert!(proof.verify_merkle_proof(root).unwrap());
+        }
+
+        // Node 9 has siblings 8 (left), 5 (right), and 3 (right).
+        let mut proof = tree.build_merkle_proof(hash1(2)).unwrap();
+        assert_eq!(proof.siblings_side, vec![true, false, false]);
+        assert_eq!(
+            proof.siblings_path,
+            vec![
+                fr_to_le_bytes(tree.nodes[8]),
+                fr_to_le_bytes(tree.nodes[5]),
+                fr_to_le_bytes(tree.nodes[3]),
+            ]
+        );
+        proof.siblings_side[0] = false;
+        assert!(!proof.verify_merkle_proof(root).unwrap());
+
+        let mut proof = tree.build_merkle_proof(hash1(2)).unwrap();
+        proof.leaf = fr_to_le_bytes(hash1(4));
+        assert!(!proof.verify_merkle_proof(root).unwrap());
+        assert!(tree.build_merkle_proof(hash1(4)).is_err());
+    }
+
+    #[test]
+    fn test_field_bytes_are_little_endian() {
+        let mut bytes = [0u8; 32];
+        bytes[0] = 0x02;
+        bytes[1] = 0x01;
+        assert_eq!(fr_to_le_bytes(Fr::from(258)), bytes);
+        assert_eq!(fr_from_le_bytes(bytes), Fr::from(258));
     }
 }
 
@@ -338,7 +452,6 @@ pub mod tests {
 #[cfg(test)]
 mod capture {
     use super::*;
-    use crate::circuit::constraints::poseidon::solana_poseidon_native::hash1;
 
     #[test]
     fn print_snapshots() {

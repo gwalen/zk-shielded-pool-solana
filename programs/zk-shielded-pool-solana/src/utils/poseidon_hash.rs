@@ -40,8 +40,11 @@ pub fn sol_poseidon_hash(vals: &[&[u8]]) -> Result<[u8; 32]> {
 // generate the IDL. Uses solana-poseidon / light_poseidon instead of the syscall.
 #[cfg(not(target_os = "solana"))]
 pub fn sol_poseidon_hash(vals: &[&[u8]]) -> Result<[u8; 32]> {
-    let hash = solana_poseidon::hashv(Parameters::Bn254X5, Endianness::LittleEndian, vals)
-        .map_err(poseidon_syscall_error_to_dapp)?
+    let hash = solana_poseidon::hashv(
+            Parameters::Bn254X5, 
+            Endianness::LittleEndian, 
+            vals
+        ).map_err(poseidon_syscall_error_to_dapp)?
         .to_bytes();
     Ok(hash)
 }

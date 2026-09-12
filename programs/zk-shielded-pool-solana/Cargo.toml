@@ -67,10 +67,12 @@ anchor-v2-testing = { git = "https://github.com/otter-sec/anchor.git", branch = 
 litesvm = "0.13"
 # Host Keccak256. Same bytes as on-chain sol_keccak256. `sha3` is required off-chain; without it hash() panics.
 solana-keccak-hasher = { version = "3.1", features = ["sha3"] }
-
 # For decoding/constructing raw SPL accounts in the low-level slot-warp
 # scenarios; matches quasar-svm 0.1.0's own spl-token major.
 # ??? still needed in anchorv2 ?
 spl-token = { version = "9", default-features = false, features = ["no-entrypoint"] }
-
+# needed for testing
+halo2-base = { version = "0.5.1", default-features = false, features = ["halo2-axiom", "display", "test-utils"] }
+# needed for testing
+anyhow = "1.0.99"
 

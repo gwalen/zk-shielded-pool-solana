@@ -41,7 +41,7 @@ impl MerkleProof {
         let mut other_sibling = self.leaf;
         for i in 0..self.siblings_path.len() {
             let sibling = self.siblings_path[i];
-            let is_left = self.siblings_side[i]; // 0 - left, 1 - right
+            let is_left = self.siblings_side[i]; // 1 - left, 0 - right
             if is_left {
                 parent = poseidon_hash::hash2(sibling, other_sibling)?;
             } else {
