@@ -1,5 +1,112 @@
+use {
+    anchor_lang::{
+        bytemuck,
+        prelude::Address,
+        solana_program::instruction::Instruction,
+        Discriminator,
+    },
+    anchor_v2_testing::{Keypair, LiteSVM, Signer, VersionedTransaction},
+    litesvm::types::{FailedTransactionMetadata, TransactionMetadata},
+    solana_message::{v0, VersionedMessage},
+    zk_shielded_pool_solana::utils::errors::DappError
+};
+
+
+use super::constants::*;
+
+
 /// Same Keccak256 as on-chain `sol_keccak256`. Host tests cannot call that
 /// syscall, so this uses the Solana hasher crate with its `sha3` feature.
 pub fn calculate_proof_hash(proof: &[u8]) -> [u8; 32] {
     solana_keccak_hasher::hash(proof).to_bytes()
+}
+
+pub fn setup() -> (LiteSVM, Keypair) {
+    let mut feature_set = LiteSVM::mainnet_feature_set();
+    feature_set.activate(&ENABLE_BIG_MOD_EXP_SYSCALL_ID, 0);
+
+    // Set the feature before rebuilding the runtime. That puts
+    // sol_big_mod_exp in the syscall table used by the loaded program.
+    // `svm()` is LiteSVM::new(), plus tracing when `--features profile` is on.
+    let mut svm = anchor_v2_testing::svm()
+        .with_feature_set(feature_set)
+        .with_builtins();
+    let zk_shieleded_pool_binary =
+        include_bytes!("../../../../target/deploy/zk_shielded_pool_solana.so");
+    svm.add_program(zk_shielded_pool_solana::id(), zk_shieleded_pool_binary)
+        .unwrap();
+
+    let payer = Keypair::new();
+    svm.airdrop(&payer.pubkey(), AIRDROP_LAMPORTS).unwrap();
+    (svm, payer)
+}
+
+#[allow(clippy::result_large_err)]
+pub fn send(
+    svm: &mut LiteSVM,
+    payer: &Keypair,
+    ixs: &[Instruction],
+) -> Result<TransactionMetadata, FailedTransactionMetadata> {
+    let msg = v0::Message::try_compile(
+        &payer.pubkey(),
+        ixs,
+        &[], // LUT
+        svm.latest_blockhash(),
+    )
+    .unwrap();
+    let tx = VersionedTransaction::try_new(VersionedMessage::V0(msg), &[payer]).unwrap();
+    svm.send_transaction(tx)
+}
+
+pub fn send_ok(svm: &mut LiteSVM, payer: &Keypair, instruction: Instruction) -> TransactionMetadata {
+    send_ok_many(svm, payer, &[instruction])
+}
+
+pub fn send_ok_many(
+    svm: &mut LiteSVM,
+    payer: &Keypair,
+    instructions: &[Instruction],
+) -> TransactionMetadata {
+    send(svm, payer, instructions).unwrap_or_else(|failure| {
+        panic!(
+            "transaction failed: {:?}\nlogs:\n{}",
+            failure.err,
+            failure.meta.logs.join("\n")
+        )
+    })
+}
+
+pub fn dapp_error_code(error: DappError) -> u32 {
+    error as u32 + ANCHOR_V2_ERROR_CODE_OFFSET
+}
+
+pub fn assert_custom_error(
+    result: Result<TransactionMetadata, FailedTransactionMetadata>,
+    error: DappError,
+) {
+    let expected = dapp_error_code(error);
+    let failure = match result {
+        Ok(_) => panic!("expected Custom({expected}), got success"),
+        Err(failure) => failure,
+    };
+    let rendered = format!("{:?}", failure.err);
+    assert!(
+        rendered.contains(&format!("Custom({expected})")),
+        "expected Custom({expected}), got: {rendered}"
+    );
+}
+
+pub fn account_lamports(svm: &LiteSVM, address: Address) -> u64 {
+    svm.get_account(&address)
+        .map(|account| account.lamports)
+        .unwrap_or(0)
+}
+
+pub fn read_pod<T: Discriminator + bytemuck::Pod>(svm: &LiteSVM, address: Address) -> T {
+    let account = svm.get_account(&address).expect("account missing");
+    let disc_len = T::DISCRIMINATOR.len();
+    // skip discriminator and read the rest of the data
+    let payload = &account.data[disc_len..disc_len + core::mem::size_of::<T>()];
+    // from_bytes gives &T, so we copy and dereference it to get T (T is Copy)
+    *bytemuck::from_bytes(payload)
 }

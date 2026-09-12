@@ -6,6 +6,7 @@ use halo2_solana_verifier::{
 };
 
 use crate::{
+    utils::public_inputs::PublicInputs,
     state::{
         proof_storage::{ProofStorage, PROOF_BUFFER_LEN},
         root_registry::RootRegistry,
@@ -70,7 +71,8 @@ pub struct Withdraw {
 pub fn handle(
     ctx: &mut Context<Withdraw>,
     proof_hash: [u8; 32],       // 32 bytes
-    public_inputs: &[[u8; 32]], // 5 * 32 bytes = 160 bytes
+    // public_inputs: &[[u8; 32]], // 5 * 32 bytes = 160 bytes
+    public_inputs: &PublicInputs, // 5 * 32 bytes = 160 bytes
     // TODO: merkle proof 20 * 32 = 640 bytes
 ) -> Result<()> {
     let stored_len = ctx.accounts.proof_account.proof_current_len.get() as usize;
@@ -95,7 +97,7 @@ pub fn handle(
     let accepted = halo2_solana_verifier::verify_gwc(
         pinned_vk,
         proof,
-        public_inputs,
+        public_inputs.to_byte_chunks().as_ref(),
         &pinned_kzg_vk,
     )
     .map_err(|_| DappError::ProofVerifierFailed)?;

@@ -1,15 +1,6 @@
 use {
-    anchor_lang::{
-        bytemuck,
-        prelude::{Address, System},
-        solana_program::instruction::Instruction,
-        Discriminator, Id,
-    },
-    anchor_v2_testing::{Keypair, LiteSVM, Signer, VersionedTransaction},
-    litesvm::types::{FailedTransactionMetadata, TransactionMetadata},
-    solana_message::{v0, VersionedMessage},
+    anchor_v2_testing::Signer,
     zk_shielded_pool_solana::{
-        accounts, instruction,
         state::{proof_storage::ProofStorage, root_registry::RootRegistry},
         utils::{
             constants::{EMPTY_TREE_VALUE, ROOT_RING_BUFFER_LENGTH},
@@ -18,241 +9,21 @@ use {
             imt_tree::{u64_to_32bytes_le, ImtTree},
             merkle_proof::MerkleProof,
             poseidon_hash,
+            public_inputs::PublicInputs,
         },
     },
 };
 
 mod common;
-use common::utils::calculate_proof_hash;
+use common::constants::*;
+use common::utils::*;
+use common::instruction_helpers::*;
 
-/// Default first `#[error_code]` value. Matches Anchor v2's offset.
-const ANCHOR_V2_ERROR_CODE_OFFSET: u32 = 6000;
-
-/// 10 SOL covers a 1.25 SOL deposit plus rent for the vault and root registry.
-const AIRDROP_LAMPORTS: u64 = 10_000_000_000;
-
-const DEPOSIT_LAMPORTS: u64 = 1_250_000_000;
-
-/// Checked-in GWC proof (`solana-proof-generator/fixtures/proof.bin`).
-const CHECKED_IN_PROOF_LEN: usize = 1088;
-/// First `upload_proof` chunk. One instruction has about 971 bytes leftover after headers.
-const PROOF_UPLOAD_PART0_LEN: usize = 800;
-/// Five 32-byte public inputs (`solana-proof-generator/fixtures/public_inputs.bin`).
-const CHECKED_IN_PUBLIC_INPUTS_LEN: usize = 160;
-const PUBLIC_INPUT_COUNT: usize = 5;
-/// Same CU cap the Mollusk verifier harness uses (`SOLANA_TRANSACTION_CU_LIMIT`).
-const VERIFY_COMPUTE_UNIT_LIMIT: u32 = 1_400_000;
-/// Same heap the Mollusk verifier harness uses. Default 32 KiB overflows in `verify_gwc`.
-const VERIFY_HEAP_FRAME_BYTES: u32 = 64 * 1024;
-const COMPUTE_BUDGET_PROGRAM_ID: Address =
-    anchor_lang::address!("ComputeBudget111111111111111111111111111111");
-// This is agave_feature_set::enable_big_mod_exp_syscall::ID. LiteSVM 0.13.1's
-// mainnet snapshot does not include it yet.
-const ENABLE_BIG_MOD_EXP_SYSCALL_ID: Address =
-    anchor_lang::address!("EBq48m8irRKuE7ZnMTLvLg2UuGSqhe8s8oMqnmja1fJw");
-
-fn program_id() -> Address {
-    zk_shielded_pool_solana::id()
-}
-
-fn setup() -> (LiteSVM, Keypair) {
-    let mut feature_set = LiteSVM::mainnet_feature_set();
-    feature_set.activate(&ENABLE_BIG_MOD_EXP_SYSCALL_ID, 0);
-
-    // Set the feature before rebuilding the runtime. That puts
-    // sol_big_mod_exp in the syscall table used by the loaded program.
-    // `svm()` is LiteSVM::new(), plus tracing when `--features profile` is on.
-    let mut svm = anchor_v2_testing::svm()
-        .with_feature_set(feature_set)
-        .with_builtins();
-    let zk_shieleded_pool_binary =
-        include_bytes!("../../../target/deploy/zk_shielded_pool_solana.so");
-    svm.add_program(program_id(), zk_shieleded_pool_binary)
-        .unwrap();
-
-    let payer = Keypair::new();
-    svm.airdrop(&payer.pubkey(), AIRDROP_LAMPORTS).unwrap();
-    (svm, payer)
-}
-
-#[allow(clippy::result_large_err)]
-fn send(
-    svm: &mut LiteSVM,
-    payer: &Keypair,
-    ixs: &[Instruction],
-) -> Result<TransactionMetadata, FailedTransactionMetadata> {
-    let msg = v0::Message::try_compile(
-        &payer.pubkey(),
-        ixs,
-        &[], // LUT
-        svm.latest_blockhash(),
-    )
-    .unwrap();
-    let tx = VersionedTransaction::try_new(VersionedMessage::V0(msg), &[payer]).unwrap();
-    svm.send_transaction(tx)
-}
-
-fn send_ok(svm: &mut LiteSVM, payer: &Keypair, instruction: Instruction) -> TransactionMetadata {
-    send_ok_many(svm, payer, &[instruction])
-}
-
-fn send_ok_many(
-    svm: &mut LiteSVM,
-    payer: &Keypair,
-    instructions: &[Instruction],
-) -> TransactionMetadata {
-    send(svm, payer, instructions).unwrap_or_else(|failure| {
-        panic!(
-            "transaction failed: {:?}\nlogs:\n{}",
-            failure.err,
-            failure.meta.logs.join("\n")
-        )
-    })
-}
-
-fn dapp_error_code(error: DappError) -> u32 {
-    error as u32 + ANCHOR_V2_ERROR_CODE_OFFSET
-}
-
-fn assert_custom_error(
-    result: Result<TransactionMetadata, FailedTransactionMetadata>,
-    error: DappError,
-) {
-    let expected = dapp_error_code(error);
-    let failure = match result {
-        Ok(_) => panic!("expected Custom({expected}), got success"),
-        Err(failure) => failure,
-    };
-    let rendered = format!("{:?}", failure.err);
-    assert!(
-        rendered.contains(&format!("Custom({expected})")),
-        "expected Custom({expected}), got: {rendered}"
-    );
-}
-
-fn account_lamports(svm: &LiteSVM, address: Address) -> u64 {
-    svm.get_account(&address)
-        .map(|account| account.lamports)
-        .unwrap_or(0)
-}
-
-fn read_pod<T: Discriminator + bytemuck::Pod>(svm: &LiteSVM, address: Address) -> T {
-    let account = svm.get_account(&address).expect("account missing");
-    let disc_len = T::DISCRIMINATOR.len();
-    // skip discriminator and read the rest of the data
-    let payload = &account.data[disc_len..disc_len + core::mem::size_of::<T>()];
-    // from_bytes gives &T, so we copy and dereference it to get T (T is Copy)
-    *bytemuck::from_bytes(payload)
-}
-
-fn vault_pda() -> Address {
-    find_pda(&[b"vault"]).0
-}
-
-fn root_registry_pda() -> (Address, u8) {
-    find_pda(&[b"root_registry"])
-}
-
-fn proof_pda(sender: &Address, proof_hash: [u8; 32]) -> (Address, u8) {
-    find_pda(&[b"proof_storage", sender.as_ref(), proof_hash.as_ref()])
-}
-
-fn find_pda(seeds: &[&[u8]]) -> (Address, u8) {
-    Address::find_program_address(seeds, &program_id())
-}
-
-fn hello_ix(payer: Address) -> Instruction {
-    instruction::Hello {}.to_instruction(accounts::HelloAccountConstraints { payer })
-}
-
-fn initialize_ix(signer: Address) -> Instruction {
-    instruction::Initialize {}.to_instruction(accounts::Initialize {
-        signer,
-        vault: vault_pda(),
-        root_registry: root_registry_pda().0,
-        system_program: System::id(),
-    })
-}
-
-fn deposit_ix(sender: Address, user_commitment_hash: [u8; 32], total_amount: u64) -> Instruction {
-    instruction::Deposit {
-        user_commitment_hash,
-        total_amount,
-    }
-    .to_instruction(accounts::Deposit {
-        sender,
-        vault: vault_pda(),
-        roots_registry: root_registry_pda().0,
-        system_program: System::id(),
-    })
-}
-
-fn upload_proof_ix(
-    sender: Address,
-    part: u8,
-    proof_final_len: u16,
-    proof_part: Vec<u8>,
-    proof_hash: [u8; 32],
-    proof_pda: Address,
-) -> Instruction {
-    instruction::UploadProof {
-        _proof_hash: proof_hash,
-        part,
-        proof_final_len,
-        proof: proof_part,
-    }
-    .to_instruction(accounts::UploadProof {
-        sender,
-        proof_account: proof_pda,
-        system_program: System::id(),
-    })
-}
-
-fn withdraw_ix(
-    sender: Address,
-    public_inputs: [[u8; 32]; 5],
-    proof_hash: [u8; 32],
-    merkle_proof: MerkleProof,
-) -> Instruction {
-    instruction::Withdraw {
-        proof_hash,
-        public_inputs,
-        merkle_proof,
-    }
-    .to_instruction(accounts::Withdraw {
-        sender,
-        vault: vault_pda(),
-        roots_registry: root_registry_pda().0,
-        proof_account: proof_pda(&sender, proof_hash).0,
-        system_program: System::id(),
-    })
-}
-
-fn compute_budget_ix(discriminator: u8, value: u32) -> Instruction {
-    // Byte 0 selects the compute-budget operation. Bytes 1..5 contain its
-    // u32 value in little-endian order.
-    let mut data = Vec::with_capacity(5);
-    data.push(discriminator);
-    data.extend_from_slice(&value.to_le_bytes());
-    Instruction {
-        program_id: COMPUTE_BUDGET_PROGRAM_ID,
-        accounts: vec![],
-        data,
-    }
-}
-
-fn set_compute_unit_limit_ix(units: u32) -> Instruction {
-    compute_budget_ix(2, units)
-}
-
-fn request_heap_frame_ix(bytes: u32) -> Instruction {
-    compute_budget_ix(1, bytes)
-}
 
 #[test]
 fn hello_logs_the_greeting() {
     let (mut svm, payer) = setup();
-    println!("program id: {}", program_id());
+    println!("program id: {}", zk_shielded_pool_solana::id());
 
     let meta = send_ok(&mut svm, &payer, hello_ix(payer.pubkey()));
     let logs = meta.logs.join("\n");
@@ -262,7 +33,7 @@ fn hello_logs_the_greeting() {
         "expected the program to log its greeting, got:\n{logs}"
     );
     assert!(
-        logs.contains(&program_id().to_string()),
+        logs.contains(&zk_shielded_pool_solana::id().to_string()),
         "expected the program to log its program ID, got:\n{logs}"
     );
 }
@@ -584,14 +355,15 @@ fn withdraw_accepts_checked_in_proof() {
     let public_inputs_bytes =
         include_bytes!("../../../../solana-proof-generator/fixtures/public_inputs.bin");
     assert_eq!(public_inputs_bytes.len(), CHECKED_IN_PUBLIC_INPUTS_LEN);
-    let mut public_inputs = [[0u8; 32]; PUBLIC_INPUT_COUNT];
-    // TODO: ask what this does ??
-    for (dst, chunk) in public_inputs
-        .iter_mut()
-        .zip(public_inputs_bytes.chunks_exact(32))
-    {
-        dst.copy_from_slice(chunk);
-    }
+
+    let public_inputs_byte_chunks: [[u8; 32]; PUBLIC_INPUT_COUNT] = public_inputs_bytes
+        .chunks_exact(32)
+        .map(|chunk| <[u8; 32]>::try_from(chunk).unwrap())
+        .collect::<Vec<[u8; 32]>>()
+        .try_into()
+        .unwrap();
+
+    let public_inputs = PublicInputs::from_byte_chunks(&public_inputs_byte_chunks);
 
     let merkle_proof_mock = MerkleProof::new(proof_hash, vec![], vec![]);
 

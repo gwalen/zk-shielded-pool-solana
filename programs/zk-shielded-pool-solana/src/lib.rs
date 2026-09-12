@@ -9,8 +9,9 @@ pub mod state;
 pub mod utils;
 
 use crate::utils::merkle_proof::MerkleProof;
+use crate::utils::public_inputs::PublicInputs;
 
-use instructions::{
+use instructions::{    
     deposit::{self, *},
     withdraw::{self, *},
     hello::{self, *},
@@ -43,7 +44,8 @@ pub mod zk_shielded_pool_solana {
     pub fn withdraw(
         ctx: &mut Context<Withdraw>,
         proof_hash: [u8; 32],
-        public_inputs: [[u8; 32]; 5],
+        // public_inputs: [[u8; 32]; 5],
+        public_inputs: PublicInputs,
         merkle_proof: MerkleProof,
     ) -> Result<()> {
         withdraw::handle(ctx, proof_hash, &public_inputs)

@@ -6,3 +6,4 @@ pub mod flatten_array;
 pub mod common;
 pub mod events;
 pub mod merkle_proof;
+pub mod public_inputs;
