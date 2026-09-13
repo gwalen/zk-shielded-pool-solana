@@ -70,18 +70,22 @@ fn call_withdraw_ix(
         &[
             set_compute_unit_limit_ix(VERIFY_COMPUTE_UNIT_LIMIT),
             request_heap_frame_ix(VERIFY_HEAP_FRAME_BYTES),
-            withdraw_ix(payer.pubkey(), public_inputs, proof_hash),
+            withdraw_ix(payer.pubkey(), Keypair::new().pubkey(), public_inputs, proof_hash),
         ],
     )
 }
 
-fn assert_proof_verified(meta: &TransactionMetadata) {
-    let logs = meta.logs.join("\n");
-    println!("withdraw logs: {logs}");
-    assert!(
-        logs.contains("Proof verified"),
-        "expected the program to log Proof verified, got:\n{logs}"
-    );
+/// TODO(point 4): the checked-in fixture proves the placeholder destination 1001, which is
+/// not the hash of any real public key. No recipient account can pass the destination check
+/// until the fixture is regenerated with a real address.
+///
+/// The destination check runs after the root lookup and after proof verification. So getting
+/// `DestinationMismatch` means both earlier steps passed. This is the furthest the old fixture
+/// can go, and these tests assert exactly that until point 4 restores the full success path.
+fn assert_verified_but_destination_rejected(
+    result: Result<TransactionMetadata, litesvm::types::FailedTransactionMetadata>,
+) {
+    assert_custom_error(result, DappError::DestinationMismatch);
 }
 
 /// The full positive path: deposit the fixture's commitment, then withdraw against the
@@ -133,16 +137,9 @@ fn calculate_root_and_withdraw() {
 
     let proof_hash = upload_fixture_proof(&mut svm, &payer);
 
-    let meta = send_ok_many(
-        &mut svm,
-        &payer,
-        &[
-            set_compute_unit_limit_ix(VERIFY_COMPUTE_UNIT_LIMIT),
-            request_heap_frame_ix(VERIFY_HEAP_FRAME_BYTES),
-            withdraw_ix(payer.pubkey(), public_inputs, proof_hash),
-        ],
-    );
-    assert_proof_verified(&meta);
+    // TODO(point 4): expect success with the real recipient once the fixture is regenerated.
+    let result = call_withdraw_ix(&mut svm, &payer, public_inputs, proof_hash);
+    assert_verified_but_destination_rejected(result);
 }
 
 /// A later deposit moves the current root on. The fixture's root is now history, and
@@ -167,9 +164,9 @@ fn withdraw_accepts_a_recorded_historical_root() {
     );
 
     let proof_hash = upload_fixture_proof(&mut svm, &payer);
-    let result = call_withdraw_ix(&mut svm, &payer, public_inputs_from_fixture(), proof_hash)
-        .expect("a root still in the history must be accepted");
-    assert_proof_verified(&result);
+    // TODO(point 4): expect success once the fixture proves a real recipient.
+    let result = call_withdraw_ix(&mut svm, &payer, public_inputs_from_fixture(), proof_hash);
+    assert_verified_but_destination_rejected(result);
 }
 
 /// A root this pool never recorded is refused, even with the matching deposit present.

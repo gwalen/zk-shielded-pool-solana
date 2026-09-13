@@ -12,7 +12,7 @@ use crate::{
         root_registry::RootRegistry,
         vault::Vault,
     },
-    utils::{common::reverse_byte_order, errors::DappError},
+    utils::{common::reverse_byte_order, dest_address_hash::dest_address_hash_le, errors::DappError},
 };
 use solana_define_syscall::definitions::sol_keccak256;
 
@@ -65,6 +65,11 @@ pub struct Withdraw {
     )]
     pub proof_account: Account<ProofStorage>,
 
+    /// Receives the payout. Does not sign. Its address is checked against
+    /// `public_inputs.dest_address` in the handler, so any other account is rejected.
+    #[account(mut)]
+    pub recipient: UncheckedAccount,
+
     pub system_program: Program<System>,
 }
 
@@ -112,6 +117,15 @@ pub fn handle(
     .map_err(|_| DappError::ProofVerifierFailed)?;
 
     require!(accepted, DappError::InvalidProof);
+
+    // The proof commits to a hash of the destination address, not the address itself.
+    // Hash the real recipient the same way. The hash comes back little-endian, the public
+    // input is big-endian, so flip it before comparing.
+    let recipient_hash_le = dest_address_hash_le(&ctx.accounts.recipient.address().to_bytes())?;
+    require!(
+        reverse_byte_order(recipient_hash_le) == public_inputs.dest_address,
+        DappError::DestinationMismatch
+    );
 
     msg!("Proof verified");
 

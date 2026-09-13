@@ -13,6 +13,7 @@ use {
 };
 
 mod common;
+use anchor_v2_testing::Keypair;
 use common::constants::*;
 use common::utils::*;
 use common::instruction_helpers::*;
@@ -317,6 +318,8 @@ fn withdraw_without_the_matching_deposit_fails() {
     send_ok(&mut svm, &payer, initialize_ix(payer.pubkey()));
 
     let proof_hash = upload_fixture_proof(&mut svm, &payer);
+    // random recipient
+    let recipient = Keypair::new().pubkey();
 
     let result = send(
         &mut svm,
@@ -324,7 +327,12 @@ fn withdraw_without_the_matching_deposit_fails() {
         &[
             set_compute_unit_limit_ix(VERIFY_COMPUTE_UNIT_LIMIT),
             request_heap_frame_ix(VERIFY_HEAP_FRAME_BYTES),
-            withdraw_ix(payer.pubkey(), public_inputs_from_fixture(), proof_hash),
+            withdraw_ix(
+                payer.pubkey(),
+                recipient,
+                public_inputs_from_fixture(),
+                proof_hash,
+            ),
         ],
     );
     assert_custom_error(result, DappError::UnknownRoot);

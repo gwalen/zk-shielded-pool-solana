@@ -24,6 +24,8 @@ pub enum DappError {
     UnknownRoot,
     /// The proven chunk amount does not fit in a u64 (bytes 0..24 of the public input are not zero)
     ChunkAmountTooLarge,
+    /// The recipient account's address hash does not match the proven destination
+    DestinationMismatch,
 
     // --------------------------------------------------------------------------------------------------------
     // ---- Poseidon syscall status codes (solana-poseidon::PoseidonSyscallError) mapped to our app errors ----

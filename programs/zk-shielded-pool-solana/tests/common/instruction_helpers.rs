@@ -74,6 +74,7 @@ pub fn upload_proof_ix(
 
 pub fn withdraw_ix(
     sender: Address,
+    recipient: Address,
     public_inputs: PublicInputs,
     proof_hash: [u8; 32],
 ) -> Instruction {
@@ -86,6 +87,7 @@ pub fn withdraw_ix(
         vault: vault_pda(),
         roots_registry: root_registry_pda().0,
         proof_account: proof_pda(&sender, proof_hash).0,
+        recipient,
         system_program: System::id(),
     })
 }
