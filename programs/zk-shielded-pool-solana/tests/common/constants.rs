@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use halo2_base::halo2_proofs::halo2curves::bn256::Fr;
 
 /// Default first `#[error_code]` value. Matches Anchor v2's offset.
 pub const ANCHOR_V2_ERROR_CODE_OFFSET: u32 = 6000;
@@ -25,3 +26,8 @@ pub const COMPUTE_BUDGET_PROGRAM_ID: Address =
 // mainnet snapshot does not include it yet.
 pub const ENABLE_BIG_MOD_EXP_SYSCALL_ID: Address =
     anchor_lang::address!("EBq48m8irRKuE7ZnMTLvLg2UuGSqhe8s8oMqnmja1fJw");
+
+
+//**** Proof fixture constants ****
+
+pub const SECRET_S: u64 = 1_234_567_890;
