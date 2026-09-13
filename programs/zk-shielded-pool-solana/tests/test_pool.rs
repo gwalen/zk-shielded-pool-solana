@@ -13,7 +13,6 @@ use {
 };
 
 mod common;
-use anchor_v2_testing::Keypair;
 use common::constants::*;
 use common::utils::*;
 use common::instruction_helpers::*;
@@ -318,9 +317,8 @@ fn withdraw_without_the_matching_deposit_fails() {
     send_ok(&mut svm, &payer, initialize_ix(payer.pubkey()));
 
     let proof_hash = upload_fixture_proof(&mut svm, &payer);
-    // random recipient
-    let recipient = Keypair::new().pubkey();
 
+    // Everything else is valid: the fixture proof, its public inputs and its real recipient.
     let result = send(
         &mut svm,
         &payer,
@@ -329,7 +327,7 @@ fn withdraw_without_the_matching_deposit_fails() {
             request_heap_frame_ix(VERIFY_HEAP_FRAME_BYTES),
             withdraw_ix(
                 payer.pubkey(),
-                recipient,
+                FIXTURE_RECIPIENT,
                 public_inputs_from_fixture(),
                 proof_hash,
             ),

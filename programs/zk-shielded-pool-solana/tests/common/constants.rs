@@ -4,8 +4,9 @@ use halo2_base::halo2_proofs::halo2curves::bn256::Fr;
 /// Default first `#[error_code]` value. Matches Anchor v2's offset.
 pub const ANCHOR_V2_ERROR_CODE_OFFSET: u32 = 6000;
 
-/// 10 SOL covers a 1.25 SOL deposit plus rent for the vault and root registry.
-pub const AIRDROP_LAMPORTS: u64 = 10_000_000_000;
+/// 20 SOL covers the 9 SOL fixture deposit (plus a small second deposit in some tests),
+/// rent for the vault, root registry and proof account, and transaction fees.
+pub const AIRDROP_LAMPORTS: u64 = 20_000_000_000;
 
 pub const DEPOSIT_LAMPORTS: u64 = 1_250_000_000;
 
@@ -29,5 +30,13 @@ pub const ENABLE_BIG_MOD_EXP_SYSCALL_ID: Address =
 
 
 //**** Proof fixture constants ****
+// Same values as solana-proof-generator/circuits/shielded-pool/src/circuit/prover.rs
+// (`build_fixture_input`). The checked-in proof was generated from them.
 
 pub const SECRET_S: u64 = 1_234_567_890;
+/// All three chunks go to this key. Only the public key is used, no keypair file.
+pub const FIXTURE_RECIPIENT: Address =
+    anchor_lang::address!("dstH17g8RBGdUo3YeYhSFHDdFzHrWkAzNCKSveAchyD");
+pub const FIXTURE_TOTAL_AMOUNT: u64 = 9_000_000_000;
+pub const FIXTURE_CHUNKS: [u64; 3] = [2_000_000_000, 3_000_000_000, 4_000_000_000];
+pub const FIXTURE_STEP: u64 = 0;

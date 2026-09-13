@@ -1,6 +1,7 @@
 mod common;
 
 use {
+    anchor_lang::prelude::Address,
     anchor_v2_testing::{Keypair, Signer},
     halo2_base::halo2_proofs::halo2curves::bn256::Fr,
     litesvm::{types::TransactionMetadata, LiteSVM},
@@ -8,7 +9,8 @@ use {
     zk_shielded_pool_solana::{
         state::root_registry::RootRegistry,
         utils::{
-            common::reverse_byte_order, constants::EMPTY_TREE_VALUE, errors::DappError,
+            common::reverse_byte_order, constants::EMPTY_TREE_VALUE,
+            dest_address_hash::dest_address_hash_le, errors::DappError,
             flatten_array::get_array_element, public_inputs::PublicInputs,
         },
     },
@@ -23,23 +25,29 @@ use common::{
     utils::*,
 };
 
-// ******** Plain values the checked-in proof was generated from ********
-const FIXTURE_TOTAL_AMOUNT: u64 = 9;
-const FIXTURE_CHUNKS: [u64; 3] = [2, 3, 4];
-const FIXTURE_ADDRESSES: [u64; 3] = [1001, 1002, 1003];
-const FIXTURE_STEP: u64 = 0;
+/// Off-chain version of the circuit's `convert_pubkey_32bytes_to_fr`, written with `Fr`:
+/// four big-endian u64 groups of the key, hashed with Poseidon.
+fn pubkey_to_fr(address: Address) -> Fr {
+    let bytes = address.to_bytes();
+    let limbs: Vec<Fr> = bytes
+        .chunks_exact(8)
+        .map(|group| Fr::from(u64::from_be_bytes(group.try_into().unwrap())))
+        .collect();
+    poseidon_hash(&limbs)
+}
 
 /// Poseidon over the secret, the three chunk amounts and the three destinations. This is
 /// the leaf input the depositor publishes; the deposit handler hashes it with the total.
 fn user_commitment_hash_from_fixture() -> Fr {
+    let dest = pubkey_to_fr(FIXTURE_RECIPIENT);
     poseidon_hash(&[
         Fr::from(SECRET_S),
         Fr::from(FIXTURE_CHUNKS[0]),
         Fr::from(FIXTURE_CHUNKS[1]),
         Fr::from(FIXTURE_CHUNKS[2]),
-        Fr::from(FIXTURE_ADDRESSES[0]),
-        Fr::from(FIXTURE_ADDRESSES[1]),
-        Fr::from(FIXTURE_ADDRESSES[2]),
+        dest,
+        dest,
+        dest,
     ])
 }
 
@@ -61,6 +69,7 @@ fn root_registry(svm: &LiteSVM) -> RootRegistry {
 fn call_withdraw_ix(
     svm: &mut LiteSVM,
     payer: &Keypair,
+    recipient: Address,
     public_inputs: PublicInputs,
     proof_hash: [u8; 32],
 ) -> Result<TransactionMetadata, litesvm::types::FailedTransactionMetadata> {
@@ -70,22 +79,28 @@ fn call_withdraw_ix(
         &[
             set_compute_unit_limit_ix(VERIFY_COMPUTE_UNIT_LIMIT),
             request_heap_frame_ix(VERIFY_HEAP_FRAME_BYTES),
-            withdraw_ix(payer.pubkey(), Keypair::new().pubkey(), public_inputs, proof_hash),
+            withdraw_ix(payer.pubkey(), recipient, public_inputs, proof_hash),
         ],
     )
 }
 
-/// TODO(point 4): the checked-in fixture proves the placeholder destination 1001, which is
-/// not the hash of any real public key. No recipient account can pass the destination check
-/// until the fixture is regenerated with a real address.
-///
-/// The destination check runs after the root lookup and after proof verification. So getting
-/// `DestinationMismatch` means both earlier steps passed. This is the furthest the old fixture
-/// can go, and these tests assert exactly that until point 4 restores the full success path.
-fn assert_verified_but_destination_rejected(
+/// The handler logs "Proof verified" only after the root, the proof and the recipient
+/// all passed.
+fn assert_withdraw_verified(
     result: Result<TransactionMetadata, litesvm::types::FailedTransactionMetadata>,
 ) {
-    assert_custom_error(result, DappError::DestinationMismatch);
+    let meta = result.unwrap_or_else(|failure| {
+        panic!(
+            "withdraw failed: {:?}\nlogs:\n{}",
+            failure.err,
+            failure.meta.logs.join("\n")
+        )
+    });
+    assert!(
+        meta.logs.iter().any(|line| line.contains("Proof verified")),
+        "expected 'Proof verified' in logs:\n{}",
+        meta.logs.join("\n")
+    );
 }
 
 /// The full positive path: deposit the fixture's commitment, then withdraw against the
@@ -101,9 +116,15 @@ fn calculate_root_and_withdraw() {
     // ******** Fixtures for public inputs in plain values **********
     let total_amount = Fr::from(FIXTURE_TOTAL_AMOUNT);
     let chunks = FIXTURE_CHUNKS.map(Fr::from);
-    let addresses = FIXTURE_ADDRESSES.map(Fr::from);
+    let dest_address = pubkey_to_fr(FIXTURE_RECIPIENT);
     let step_idx = Fr::from(FIXTURE_STEP);
     let nullifier = hash2(Fr::from(SECRET_S), step_idx);
+
+    // The on-chain address hash gives the same field value as the off-chain Fr version.
+    assert_eq!(
+        dest_address_hash_le(&FIXTURE_RECIPIENT.to_bytes()).unwrap(),
+        fr_to_le_bytes(dest_address)
+    );
 
     let user_commitment_hash = user_commitment_hash_from_fixture();
     let mt_tree = build_mt_tree(user_commitment_hash, total_amount);
@@ -112,8 +133,8 @@ fn calculate_root_and_withdraw() {
     // ******** Fixtures for public inputs - validation **********
     assert_eq!(public_inputs.step, fr_to_be_bytes(step_idx));
     assert_eq!(public_inputs.chunk_amount, fr_to_be_bytes(chunks[0]));
-    assert_eq!(public_inputs.chunk_amount_u64().unwrap(), FIXTURE_CHUNKS[0]);
-    assert_eq!(public_inputs.dest_address, fr_to_be_bytes(addresses[0]));
+    assert_eq!(public_inputs.chunk_amount_u64().unwrap(), 2_000_000_000);
+    assert_eq!(public_inputs.dest_address, fr_to_be_bytes(dest_address));
     assert_eq!(public_inputs.nullifier, fr_to_be_bytes(nullifier));
     assert_eq!(public_inputs.root, fr_to_be_bytes(off_chain_root));
     // ******************
@@ -137,9 +158,14 @@ fn calculate_root_and_withdraw() {
 
     let proof_hash = upload_fixture_proof(&mut svm, &payer);
 
-    // TODO(point 4): expect success with the real recipient once the fixture is regenerated.
-    let result = call_withdraw_ix(&mut svm, &payer, public_inputs, proof_hash);
-    assert_verified_but_destination_rejected(result);
+    let result = call_withdraw_ix(
+        &mut svm,
+        &payer,
+        FIXTURE_RECIPIENT,
+        public_inputs,
+        proof_hash,
+    );
+    assert_withdraw_verified(result);
 }
 
 /// A later deposit moves the current root on. The fixture's root is now history, and
@@ -164,9 +190,83 @@ fn withdraw_accepts_a_recorded_historical_root() {
     );
 
     let proof_hash = upload_fixture_proof(&mut svm, &payer);
-    // TODO(point 4): expect success once the fixture proves a real recipient.
-    let result = call_withdraw_ix(&mut svm, &payer, public_inputs_from_fixture(), proof_hash);
-    assert_verified_but_destination_rejected(result);
+    let result = call_withdraw_ix(
+        &mut svm,
+        &payer,
+        FIXTURE_RECIPIENT,
+        public_inputs_from_fixture(),
+        proof_hash,
+    );
+    assert_withdraw_verified(result);
+}
+
+/// Same valid proof and public inputs, but a different recipient account. The destination
+/// check runs after verification, so this error also shows the proof itself was accepted.
+#[test]
+fn withdraw_to_another_recipient_fails() {
+    let (mut svm, payer) = setup();
+    send_ok(&mut svm, &payer, initialize_ix(payer.pubkey()));
+    deposit_with_fixture_values(&mut svm, &payer);
+
+    let proof_hash = upload_fixture_proof(&mut svm, &payer);
+
+    let other_recipient = Keypair::new().pubkey();
+    assert_ne!(other_recipient, FIXTURE_RECIPIENT);
+    let result = call_withdraw_ix(
+        &mut svm,
+        &payer,
+        other_recipient,
+        public_inputs_from_fixture(),
+        proof_hash,
+    );
+    assert_custom_error(result, DappError::DestinationMismatch);
+}
+
+/// The payer as recipient is also refused, but earlier: `sender` and `recipient` are both
+/// mutable, and Anchor rejects the same mutable account twice before the handler runs
+/// (ConstraintDuplicateMutableAccount, code 2040).
+#[test]
+fn withdraw_to_the_payer_fails() {
+    let (mut svm, payer) = setup();
+    send_ok(&mut svm, &payer, initialize_ix(payer.pubkey()));
+    deposit_with_fixture_values(&mut svm, &payer);
+
+    let proof_hash = upload_fixture_proof(&mut svm, &payer);
+
+    let result = call_withdraw_ix(
+        &mut svm,
+        &payer,
+        payer.pubkey(),
+        public_inputs_from_fixture(),
+        proof_hash,
+    );
+    let failure = result.expect_err("withdraw to the payer must fail");
+    let rendered = format!("{:?}", failure.err);
+    assert!(rendered.contains("Custom(2040)"), "got: {rendered}");
+}
+
+/// Asking for a different amount with the same proof fails verification. The new amount
+/// is a real chunk of this deposit (step 1), still a valid u64, and the root is known.
+#[test]
+fn withdraw_with_a_changed_amount_fails() {
+    let (mut svm, payer) = setup();
+    send_ok(&mut svm, &payer, initialize_ix(payer.pubkey()));
+    deposit_with_fixture_values(&mut svm, &payer);
+
+    let proof_hash = upload_fixture_proof(&mut svm, &payer);
+
+    let mut public_inputs = public_inputs_from_fixture();
+    public_inputs.chunk_amount = fr_to_be_bytes(Fr::from(FIXTURE_CHUNKS[1]));
+    assert_eq!(public_inputs.chunk_amount_u64().unwrap(), 3_000_000_000);
+
+    let result = call_withdraw_ix(
+        &mut svm,
+        &payer,
+        FIXTURE_RECIPIENT,
+        public_inputs,
+        proof_hash,
+    );
+    assert_custom_error(result, DappError::InvalidProof);
 }
 
 /// A root this pool never recorded is refused, even with the matching deposit present.
@@ -181,7 +281,13 @@ fn withdraw_with_an_unknown_root_fails() {
     let mut public_inputs = public_inputs_from_fixture();
     public_inputs.root = fr_to_be_bytes(hash1(99));
 
-    let result = call_withdraw_ix(&mut svm, &payer, public_inputs, proof_hash);
+    let result = call_withdraw_ix(
+        &mut svm,
+        &payer,
+        FIXTURE_RECIPIENT,
+        public_inputs,
+        proof_hash,
+    );
     assert_custom_error(result, DappError::UnknownRoot);
 }
 
@@ -205,7 +311,13 @@ fn withdraw_with_the_unused_history_marker_fails() {
     let mut public_inputs = public_inputs_from_fixture();
     public_inputs.root = reverse_byte_order(EMPTY_TREE_VALUE);
 
-    let result = call_withdraw_ix(&mut svm, &payer, public_inputs, proof_hash);
+    let result = call_withdraw_ix(
+        &mut svm,
+        &payer,
+        FIXTURE_RECIPIENT,
+        public_inputs,
+        proof_hash,
+    );
     assert_custom_error(result, DappError::UnknownRoot);
 }
 
@@ -227,7 +339,13 @@ fn withdraw_with_a_recorded_but_different_root_fails() {
     assert_ne!(public_inputs.root, other_root_be);
     public_inputs.root = other_root_be;
 
-    let result = call_withdraw_ix(&mut svm, &payer, public_inputs, proof_hash);
+    let result = call_withdraw_ix(
+        &mut svm,
+        &payer,
+        FIXTURE_RECIPIENT,
+        public_inputs,
+        proof_hash,
+    );
     assert_custom_error(result, DappError::InvalidProof);
 }
 
@@ -245,7 +363,13 @@ fn withdraw_with_a_chunk_amount_above_u64_fails() {
     // Byte 23 is the lowest byte above the u64 range: this is 2^64 + the real amount.
     public_inputs.chunk_amount[23] = 1;
 
-    let result = call_withdraw_ix(&mut svm, &payer, public_inputs, proof_hash);
+    let result = call_withdraw_ix(
+        &mut svm,
+        &payer,
+        FIXTURE_RECIPIENT,
+        public_inputs,
+        proof_hash,
+    );
     assert_custom_error(result, DappError::ChunkAmountTooLarge);
 }
 
