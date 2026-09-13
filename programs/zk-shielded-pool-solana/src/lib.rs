@@ -44,7 +44,6 @@ pub mod zk_shielded_pool_solana {
     pub fn withdraw(
         ctx: &mut Context<Withdraw>,
         proof_hash: [u8; 32],
-        // public_inputs: [[u8; 32]; 5],
         public_inputs: PublicInputs,
         merkle_proof: MerkleProof,
     ) -> Result<()> {

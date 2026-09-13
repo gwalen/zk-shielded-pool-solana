@@ -1,5 +1,7 @@
 use anchor_lang::prelude::*;
 
+// NOTE: bytes for public inputs are stored as big-endian (BE) after conversion from Fr values
+// this is what proof verifier expects
 #[derive(AnchorSerialize, AnchorDeserialize, IdlType)]
 pub struct PublicInputs {
     pub step: [u8; 32],         // u8 step number as Fr

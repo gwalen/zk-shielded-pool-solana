@@ -78,6 +78,7 @@ impl OffChainImt {
         Ok(())
     }
 
+    // TODO: optimize this function full tree build with optimization takes 17s
     pub fn build_tree(&mut self) {
         // first fill the leaf level
         for i in self.first_leaf_idx..self.nodes.len() {
@@ -91,7 +92,7 @@ impl OffChainImt {
             for i in level_start_idx..last_level_start_idx {
                 let left_child = self.node(i * 2);
                 let right_child = self.node(i * 2 + 1);
-                self.nodes[i] = poseidon_hash(&[left_child, right_child])
+                self.nodes[i] = hash2(left_child, right_child)
             }
             last_level_start_idx = level_start_idx;
         }
@@ -163,6 +164,12 @@ pub fn fr_to_le_bytes(value: Fr) -> [u8; 32] {
     value.to_repr()
 }
 
+pub fn fr_to_be_bytes(value: Fr) -> [u8; 32] {
+    let mut bytes = fr_to_le_bytes(value);
+    bytes.reverse();
+    bytes
+}
+
 pub fn fr_from_le_bytes(bytes: [u8; 32]) -> Fr {
     Fr::from_repr(bytes).unwrap()
 }
@@ -175,6 +182,17 @@ pub fn poseidon_hash(values: &[Fr]) -> Fr {
         values_bytes.iter().map(|value| value.as_slice()).collect::<Vec<&[u8]>>().as_slice(),
     )
     .unwrap();
+    fr_from_le_bytes(hash.to_bytes())
+}
+
+pub fn hash2(left: Fr, right: Fr) -> Fr {
+    let hash = solana_poseidon::hashv(
+        Parameters::Bn254X5,
+        Endianness::LittleEndian,
+        &[&fr_to_le_bytes(left), &fr_to_le_bytes(right)],
+    )
+    .unwrap();
+
     fr_from_le_bytes(hash.to_bytes())
 }
 
@@ -199,7 +217,7 @@ pub fn generate_zero_values_for_levels(tree_depth: usize) -> Vec<Fr> {
 
     for i in 1..tree_depth {
         let z_prev = zero_values[i - 1];
-        zero_values.push(poseidon_hash(&[z_prev, z_prev]));
+        zero_values.push(hash2(z_prev, z_prev));
     }
 
     zero_values
@@ -288,13 +306,13 @@ pub mod tests {
         assert_eq!(hex(zv[2]), Z2_HEX);
     }
 
-    // test_empty_root_snapshot — empty depth-3 root() matches snapshot, and == poseidon_hash(z2,z2) | snapshot
+    // test_empty_root_snapshot — empty depth-3 root() matches snapshot, and == hash2(z2,z2) | snapshot
     #[test]
     fn test_empty_root_snapshot() {
         let off_chain_imt = OffChainImt::new(3);
         assert_eq!(hex(off_chain_imt.root()), EMPTY_ROOT_HEX);
         let zv = generate_zero_values_for_levels(3);
-        assert_eq!(off_chain_imt.root(), poseidon_hash(&[zv[2], zv[2]]));
+        assert_eq!(off_chain_imt.root(), hash2(zv[2], zv[2]));
     }
 
     // test_single_leaf_snapshot — insert one commitment, build_tree, root matches snapshot; path siblings resolve to zero_values | snapshot

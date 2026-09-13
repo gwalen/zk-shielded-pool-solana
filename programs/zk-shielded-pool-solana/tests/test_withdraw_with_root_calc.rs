@@ -1,4 +1,6 @@
-use crate::common::off_chain_imt::{poseidon_hash, OffChainImt, TREE_DEPTH_MAX};
+use crate::common::off_chain_imt::{
+    fr_to_be_bytes, hash2, poseidon_hash, OffChainImt, TREE_DEPTH_MAX,
+};
 
 use {
     anchor_v2_testing::Signer,
@@ -15,6 +17,7 @@ use common::utils::*;
 use halo2_base::halo2_proofs::halo2curves::bn256::Fr;
 use litesvm::types::TransactionMetadata;
 use litesvm::LiteSVM;
+use std::time::SystemTime;
 use zk_shielded_pool_solana::utils::public_inputs::PublicInputs;
 
 #[test]
@@ -63,20 +66,6 @@ fn calculate_root_and_withdraw() {
         include_bytes!("../../../../solana-proof-generator/fixtures/public_inputs.bin");
     assert_eq!(public_inputs_bytes.len(), CHECKED_IN_PUBLIC_INPUTS_LEN);
 
-    // ******** Fixtures for public inputs in plain values **********
-    let total_amount = Fr::from(9);
-    let chunks = [Fr::from(1), Fr::from(2), Fr::from(3)];
-    let addresses = [Fr::from(1001), Fr::from(1002), Fr::from(1003)];
-    let step_idx = Fr::from(0);
-    let user_secret_s = Fr::from(SECRET_S);
-    let nullifier = poseidon_hash(&[user_secret_s, step_idx]);
-
-    let mt_tree = build_mt_tree(user_secret_s, chunks, addresses, total_amount);
-    let root = mt_tree.root();
-    // ******** Fixtures for public inputs - validation **********
-    // TODO: assert that valus are same what is in the fixuture
-    // ******************
-
     let public_inputs_byte_chunks: [[u8; 32]; PUBLIC_INPUT_COUNT] = public_inputs_bytes
         .chunks_exact(32)
         .map(|chunk| <[u8; 32]>::try_from(chunk).unwrap())
@@ -85,6 +74,24 @@ fn calculate_root_and_withdraw() {
         .unwrap();
 
     let public_inputs = PublicInputs::from_byte_chunks(&public_inputs_byte_chunks);
+
+    // ******** Fixtures for public inputs in plain values **********
+    let total_amount = Fr::from(9);
+    let chunks = [Fr::from(2), Fr::from(3), Fr::from(4)];
+    let addresses = [Fr::from(1001), Fr::from(1002), Fr::from(1003)];
+    let step_idx = Fr::from(0);
+    let user_secret_s = Fr::from(SECRET_S);
+    let nullifier = hash2(user_secret_s, step_idx);
+
+    let mt_tree = build_mt_tree(user_secret_s, chunks, addresses, total_amount);
+    let root = mt_tree.root();
+    // ******** Fixtures for public inputs - validation **********
+    assert_eq!(public_inputs.step, fr_to_be_bytes(step_idx));
+    assert_eq!(public_inputs.chunk_amount, fr_to_be_bytes(chunks[0]));
+    assert_eq!(public_inputs.dest_address, fr_to_be_bytes(addresses[0]));
+    assert_eq!(public_inputs.nullifier, fr_to_be_bytes(nullifier));
+    assert_eq!(public_inputs.root, fr_to_be_bytes(root));
+    // ******************
 
     let merkle_proof_mock = MerkleProof::new(proof_hash, vec![], vec![]);
 
@@ -120,11 +127,24 @@ fn build_mt_tree(
         addresses[1],
         addresses[2],
     ]);
-    let deposit_commitment_hash = poseidon_hash(&[user_commitment_hash, total_amount]);
+    let deposit_commitment_hash = hash2(user_commitment_hash, total_amount);
 
+    let empty_tree_start = SystemTime::now();
     let mut imt_tree = OffChainImt::new(TREE_DEPTH_MAX as u32);
+    let empty_tree_duration = SystemTime::now()
+        .duration_since(empty_tree_start)
+        .unwrap();
+    println!("empty tree build duration: {:?}", empty_tree_duration);
+
     imt_tree.insert_leaf_lazy(deposit_commitment_hash).unwrap();
+
+    let leaf_tree_start = SystemTime::now();
     imt_tree.build_tree();
+    let leaf_tree_duration = SystemTime::now()
+        .duration_since(leaf_tree_start)
+        .unwrap();
+    println!("tree rebuild after leaf duration: {:?}", leaf_tree_duration);
+
     imt_tree
 }
 
