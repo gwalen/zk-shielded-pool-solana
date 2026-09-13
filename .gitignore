@@ -24,6 +24,7 @@ target
 # AI configurations
 .claude/
 .agents/
+.cursor/
 
 skills-lock.json
 
@@ -38,3 +39,6 @@ params/
 
 # Private docs
 docs-prv/
+
+# local json files
+*.json
