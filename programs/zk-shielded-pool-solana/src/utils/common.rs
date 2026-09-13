@@ -12,3 +12,16 @@ pub fn is_in_fr_range(v: &[u8; 32]) -> bool {
     }
     false
 }
+/// Flip a 32-byte field element between big-endian and little-endian order.
+///
+/// Byte 0 becomes byte 31, byte 1 becomes byte 30, and so on. The two orders are mirror
+/// images, so the same function converts either way. Name the result for the order you
+/// wanted: `let root_le = reverse_byte_order(root_be);`
+///
+/// Public inputs arrive big-endian, because that is what the proof verifier reads. The
+/// root history stores little-endian. This is the bridge between the two.
+pub fn reverse_byte_order(bytes: [u8; 32]) -> [u8; 32] {
+    let mut reversed = bytes;
+    reversed.reverse();
+    reversed
+}

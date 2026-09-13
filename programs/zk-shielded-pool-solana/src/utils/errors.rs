@@ -20,6 +20,8 @@ pub enum DappError {
     InvalidProofHash,
     /// Invalid proof
     InvalidProof,
+    /// The proven Merkle root is not a current or recent root of this pool
+    UnknownRoot,
 
     // --------------------------------------------------------------------------------------------------------
     // ---- Poseidon syscall status codes (solana-poseidon::PoseidonSyscallError) mapped to our app errors ----

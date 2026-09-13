@@ -4,10 +4,7 @@ use {
         solana_program::instruction::Instruction,
         Id,
     },
-    zk_shielded_pool_solana::{
-        accounts, instruction,
-        utils::{merkle_proof::MerkleProof, public_inputs::PublicInputs}
-    },
+    zk_shielded_pool_solana::{accounts, instruction, utils::public_inputs::PublicInputs},
 };
 use super::constants::*;
 
@@ -79,12 +76,10 @@ pub fn withdraw_ix(
     sender: Address,
     public_inputs: PublicInputs,
     proof_hash: [u8; 32],
-    merkle_proof: MerkleProof,
 ) -> Instruction {
     instruction::Withdraw {
         proof_hash,
         public_inputs,
-        merkle_proof,
     }
     .to_instruction(accounts::Withdraw {
         sender,

@@ -12,7 +12,7 @@ use crate::{
         root_registry::RootRegistry,
         vault::Vault,
     },
-    utils::errors::DappError,
+    utils::{common::reverse_byte_order, errors::DappError},
 };
 use solana_define_syscall::definitions::sol_keccak256;
 
@@ -70,11 +70,17 @@ pub struct Withdraw {
 
 pub fn handle(
     ctx: &mut Context<Withdraw>,
-    proof_hash: [u8; 32],       // 32 bytes
-    // public_inputs: &[[u8; 32]], // 5 * 32 bytes = 160 bytes
+    proof_hash: [u8; 32],         // 32 bytes
     public_inputs: &PublicInputs, // 5 * 32 bytes = 160 bytes
-    // TODO: merkle proof 20 * 32 = 640 bytes
 ) -> Result<()> {
+    // public_inputs.root is big-endian - that is what the verifier needs.
+    // history stores little-endian, so we create a little-endian version for the check
+    let root_le = reverse_byte_order(public_inputs.root);
+    require!(
+        ctx.accounts.roots_registry.is_known_root(&root_le),
+        DappError::UnknownRoot
+    );
+
     let stored_len = ctx.accounts.proof_account.proof_current_len.get() as usize;
     require!(stored_len <= PROOF_BUFFER_LEN, DappError::ProofBufferFull);
 

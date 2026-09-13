@@ -1,12 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::{
-    state::{root_registry::RootRegistry, vault::Vault},
-    utils::{
-        constants::{EMPTY_TREE_VALUE, ROOT_RING_BUFFER_LENGTH},
-        flatten_array::set_array_element,
-    },
-};
+use crate::state::{root_registry::RootRegistry, vault::Vault};
 
 /// Accounts for the initialize instruction.
 /// Creates the vault and root-registry PDAs and fills the empty Merkle tree.
@@ -42,18 +36,8 @@ pub fn handle(ctx: &mut Context<Initialize>) -> Result<()> {
 
     let root_registry = &mut ctx.accounts.root_registry;
 
-    // initialize the empty tree in place with no stack allocation
-    root_registry.imt.initialize_empty()?;
-    let empty_tree_root = root_registry.imt.root;
-
-    // We need to set the ring buffer to empty values, with the empty-tree root in slot 0.
-    // Here we also do in place updates on account data with no stack allocations
-    for i in 0..ROOT_RING_BUFFER_LENGTH {
-        set_array_element(&mut root_registry.roots_history, i, &EMPTY_TREE_VALUE);
-    }
-    set_array_element(&mut root_registry.roots_history, 0, &empty_tree_root);
-
-    root_registry.last_root_idx = PodU32::from(0);
+    // Fills the empty tree and the root ring buffer in place, with no stack allocation.
+    root_registry.initialize_empty()?;
     root_registry.bump = ctx.bumps.root_registry;
 
     Ok(())

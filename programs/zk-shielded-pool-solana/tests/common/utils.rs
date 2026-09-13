@@ -8,11 +8,79 @@ use {
     anchor_v2_testing::{Keypair, LiteSVM, Signer, VersionedTransaction},
     litesvm::types::{FailedTransactionMetadata, TransactionMetadata},
     solana_message::{v0, VersionedMessage},
-    zk_shielded_pool_solana::utils::errors::DappError
+    zk_shielded_pool_solana::{
+        state::proof_storage::ProofStorage,
+        utils::{errors::DappError, public_inputs::PublicInputs},
+    },
 };
 
 
 use super::constants::*;
+use super::instruction_helpers::{proof_pda, upload_proof_ix};
+
+/// The checked-in GWC proof the withdrawal tests replay.
+pub const FIXTURE_PROOF: &[u8] =
+    include_bytes!("../../../../../solana-proof-generator/fixtures/proof.bin");
+
+/// The five 32-byte big-endian public inputs that proof was generated for.
+pub const FIXTURE_PUBLIC_INPUTS: &[u8] =
+    include_bytes!("../../../../../solana-proof-generator/fixtures/public_inputs.bin");
+
+/// Read the checked-in public inputs into the struct the program takes.
+pub fn public_inputs_from_fixture() -> PublicInputs {
+    assert_eq!(FIXTURE_PUBLIC_INPUTS.len(), CHECKED_IN_PUBLIC_INPUTS_LEN);
+
+    let byte_chunks: [[u8; 32]; PUBLIC_INPUT_COUNT] = FIXTURE_PUBLIC_INPUTS
+        .chunks_exact(32)
+        .map(|chunk| <[u8; 32]>::try_from(chunk).unwrap())
+        .collect::<Vec<[u8; 32]>>()
+        .try_into()
+        .unwrap();
+
+    PublicInputs::from_byte_chunks(&byte_chunks)
+}
+
+/// Upload the checked-in proof, split over the two instructions the packet budget
+/// forces, and return its hash. Also checks that the bytes landed in the buffer.
+pub fn upload_fixture_proof(svm: &mut LiteSVM, payer: &Keypair) -> [u8; 32] {
+    assert_eq!(FIXTURE_PROOF.len(), CHECKED_IN_PROOF_LEN);
+    let proof_hash = calculate_proof_hash(FIXTURE_PROOF);
+    let proof_address = proof_pda(&payer.pubkey(), proof_hash).0;
+
+    send_ok(
+        svm,
+        payer,
+        upload_proof_ix(
+            payer.pubkey(),
+            0,
+            CHECKED_IN_PROOF_LEN as u16,
+            FIXTURE_PROOF[..PROOF_UPLOAD_PART0_LEN].to_vec(),
+            proof_hash,
+            proof_address,
+        ),
+    );
+    send_ok(
+        svm,
+        payer,
+        upload_proof_ix(
+            payer.pubkey(),
+            1,
+            CHECKED_IN_PROOF_LEN as u16,
+            FIXTURE_PROOF[PROOF_UPLOAD_PART0_LEN..].to_vec(),
+            proof_hash,
+            proof_address,
+        ),
+    );
+
+    let stored = read_pod::<ProofStorage>(svm, proof_address);
+    assert_eq!(
+        stored.proof_current_len.get() as usize,
+        CHECKED_IN_PROOF_LEN
+    );
+    assert_eq!(&stored.proof[..CHECKED_IN_PROOF_LEN], FIXTURE_PROOF);
+
+    proof_hash
+}
 
 
 /// Same Keccak256 as on-chain `sol_keccak256`. Host tests cannot call that

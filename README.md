@@ -1,6 +1,6 @@
 # ZK-Shielded Pool Solana Program
 
-This Anchor v2 program implements the deposit side of a shielded SOL pool. A deposit transfers lamports into a program-owned vault and inserts a Poseidon commitment into an incremental Merkle tree. The current program does not implement withdrawals.
+This Anchor v2 program implements a shielded SOL pool. A deposit transfers lamports into a program-owned vault and inserts a Poseidon commitment into an incremental Merkle tree. Withdrawal verifies a Halo2 proof against a recorded pool root; the payout itself is not implemented yet.
 
 ## Major Concepts
 
@@ -9,6 +9,7 @@ This Anchor v2 program implements the deposit side of a shielded SOL pool. A dep
 - The **proof storage PDA**, derived from `b"proof_storage"` plus the sender address and a `proof_hash`, is a fixed 1500-byte buffer with a `proof_len` field. It holds raw GWC proof bytes (the checked-in `proof.bin` is 1088 bytes). `upload_proof` creates it with `init_if_needed` on first use. `part == 0` writes the chunk at offset 0; any other `part` appends at the current `proof_len`. Empty chunks and writes that would exceed 1500 bytes are rejected. A 1088-byte proof does not fit in one instruction (about 995 bytes leftover after headers), so the client splits it across two `upload_proof` calls.
 - The `initialize` instruction handler creates the vault and root registry PDAs and initializes the empty tree.
 - The `deposit` instruction handler accepts a BN254 scalar-field commitment and a nonzero lamport amount. It computes `Poseidon(user_commitment_hash, total_amount)`, inserts the result into the tree, transfers the lamports from the sender to the vault, and emits `DepositDone`.
+- The `withdraw` instruction handler takes the five 32-byte big-endian public inputs and a `proof_hash` for an already uploaded proof. The Merkle path stays private inside the circuit: the caller sends no Merkle proof. The handler reverses `public_inputs.root` into little-endian order and requires it to be a root the pool itself recorded, then verifies the proof. Unused ring-buffer slots hold `EMPTY_TREE_VALUE` (the field value one), which is never a real root and is rejected. Roots pushed out of the 100-entry ring buffer are rejected too.
 
 ## Setup
 
