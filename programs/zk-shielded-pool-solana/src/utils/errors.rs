@@ -22,6 +22,8 @@ pub enum DappError {
     InvalidProof,
     /// The proven Merkle root is not a current or recent root of this pool
     UnknownRoot,
+    /// The proven chunk amount does not fit in a u64 (bytes 0..24 of the public input are not zero)
+    ChunkAmountTooLarge,
 
     // --------------------------------------------------------------------------------------------------------
     // ---- Poseidon syscall status codes (solana-poseidon::PoseidonSyscallError) mapped to our app errors ----

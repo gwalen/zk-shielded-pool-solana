@@ -81,6 +81,9 @@ pub fn handle(
         DappError::UnknownRoot
     );
 
+    // Decoded from the same bytes the verifier checks below, so the amount is the proven one.
+    let _chunk_amount_lamports = public_inputs.chunk_amount_u64()?;
+
     let stored_len = ctx.accounts.proof_account.proof_current_len.get() as usize;
     require!(stored_len <= PROOF_BUFFER_LEN, DappError::ProofBufferFull);
 

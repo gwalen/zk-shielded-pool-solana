@@ -108,6 +108,7 @@ fn calculate_root_and_withdraw() {
     // ******** Fixtures for public inputs - validation **********
     assert_eq!(public_inputs.step, fr_to_be_bytes(step_idx));
     assert_eq!(public_inputs.chunk_amount, fr_to_be_bytes(chunks[0]));
+    assert_eq!(public_inputs.chunk_amount_u64().unwrap(), FIXTURE_CHUNKS[0]);
     assert_eq!(public_inputs.dest_address, fr_to_be_bytes(addresses[0]));
     assert_eq!(public_inputs.nullifier, fr_to_be_bytes(nullifier));
     assert_eq!(public_inputs.root, fr_to_be_bytes(off_chain_root));
@@ -231,6 +232,24 @@ fn withdraw_with_a_recorded_but_different_root_fails() {
 
     let result = call_withdraw_ix(&mut svm, &payer, public_inputs, proof_hash);
     assert_custom_error(result, DappError::InvalidProof);
+}
+
+/// A chunk amount with a nonzero byte above the u64 range is refused on chain before
+/// verification. The root is valid, so the rejection comes from the amount decoding.
+#[test]
+fn withdraw_with_a_chunk_amount_above_u64_fails() {
+    let (mut svm, payer) = setup();
+    send_ok(&mut svm, &payer, initialize_ix(payer.pubkey()));
+    deposit_with_fixture_values(&mut svm, &payer);
+
+    let proof_hash = upload_fixture_proof(&mut svm, &payer);
+
+    let mut public_inputs = public_inputs_from_fixture();
+    // Byte 23 is the lowest byte above the u64 range: this is 2^64 + the real amount.
+    public_inputs.chunk_amount[23] = 1;
+
+    let result = call_withdraw_ix(&mut svm, &payer, public_inputs, proof_hash);
+    assert_custom_error(result, DappError::ChunkAmountTooLarge);
 }
 
 fn build_mt_tree(user_commitment_hash: Fr, total_amount: Fr) -> OffChainImt {
