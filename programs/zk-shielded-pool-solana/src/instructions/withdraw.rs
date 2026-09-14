@@ -8,6 +8,7 @@ use halo2_solana_verifier::{
 use crate::{
     utils::public_inputs::PublicInputs,
     state::{
+        nullifier::Nullifier,
         proof_storage::{ProofStorage, PROOF_BUFFER_LEN},
         root_registry::RootRegistry,
         vault::Vault,
@@ -46,7 +47,7 @@ fn pinned_kzg_vk() -> KzgVk {
 }
 
 #[derive(Accounts)]
-#[instruction(proof_hash: [u8; 32])]
+#[instruction(proof_hash: [u8; 32], public_inputs: PublicInputs)]
 pub struct Withdraw {
     #[account(mut)]
     pub sender: Signer,
@@ -69,6 +70,19 @@ pub struct Withdraw {
     /// `public_inputs.dest_address` in the handler, so any other account is rejected.
     #[account(mut)]
     pub recipient: UncheckedAccount,
+
+    /// Nullifier marker for a withdrawal step. Created once, paid by the sender.
+    /// `init` (not `init_if_needed`) prevents repeating the same withdrawal step.
+    /// Each step represents a withdrawal of a chunk amount to its destination.
+    /// Seeds contain only the fixed prefix and big-endian nullifier bytes: no sender, recipient, proof hash, or root.
+    /// Once a proof for the given withdrawal step is accepted and the transaction succeeds, this nullifier cannot be used again.
+    #[account(
+        init,
+        payer = sender,
+        seeds = [b"nullifier", public_inputs.nullifier.as_ref()],
+        bump,
+    )]
+    pub nullifier_account: Account<Nullifier>,
 
     pub system_program: Program<System>,
 }
@@ -126,6 +140,11 @@ pub fn handle(
         reverse_byte_order(recipient_hash_le) == public_inputs.dest_address,
         DappError::DestinationMismatch
     );
+
+    // Anchor created the nullifier account before this handler ran (`init`).
+    // If any check above failed, the whole transaction fails and Solana rolls back all changes,
+    // so no spent marker is left. Record the bump only after all checks.
+    ctx.accounts.nullifier_account.bump = ctx.bumps.nullifier_account;
 
     msg!("Proof verified");
 

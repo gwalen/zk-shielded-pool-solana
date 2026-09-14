@@ -319,6 +319,7 @@ fn withdraw_without_the_matching_deposit_fails() {
     let proof_hash = upload_fixture_proof(&mut svm, &payer);
 
     // Everything else is valid: the fixture proof, its public inputs and its real recipient.
+    let public_inputs = public_inputs_from_fixture();
     let result = send(
         &mut svm,
         &payer,
@@ -328,10 +329,16 @@ fn withdraw_without_the_matching_deposit_fails() {
             withdraw_ix(
                 payer.pubkey(),
                 FIXTURE_RECIPIENT,
-                public_inputs_from_fixture(),
+                public_inputs,
                 proof_hash,
             ),
         ],
     );
     assert_custom_error(result, DappError::UnknownRoot);
+    // Unknown root fails before any marker is kept. The `init` nullifier is rolled back.
+    let (nullifier_address, _) = nullifier_pda(&public_inputs.nullifier);
+    assert!(
+        svm.get_account(&nullifier_address).is_none(),
+        "failed withdraw must not leave a spent marker at {nullifier_address}"
+    );
 }

@@ -7,7 +7,7 @@ use {
     litesvm::{types::TransactionMetadata, LiteSVM},
     std::time::SystemTime,
     zk_shielded_pool_solana::{
-        state::root_registry::RootRegistry,
+        state::{nullifier::Nullifier, root_registry::RootRegistry},
         utils::{
             common::reverse_byte_order, constants::EMPTY_TREE_VALUE,
             dest_address_hash::dest_address_hash_le, errors::DappError,
@@ -103,6 +103,28 @@ fn assert_withdraw_verified(
     );
 }
 
+fn assert_nullifier_created(svm: &LiteSVM, public_inputs: &PublicInputs) {
+    let (address, expected_bump) = nullifier_pda(&public_inputs.nullifier);
+    let account = svm
+        .get_account(&address)
+        .unwrap_or_else(|| panic!("nullifier marker missing at {address}"));
+    assert_eq!(
+        account.owner,
+        zk_shielded_pool_solana::id(),
+        "nullifier marker must be program-owned"
+    );
+    let marker = read_pod::<Nullifier>(svm, address);
+    assert_eq!(marker.bump, expected_bump);
+}
+
+fn assert_nullifier_missing(svm: &LiteSVM, public_inputs: &PublicInputs) {
+    let (address, _) = nullifier_pda(&public_inputs.nullifier);
+    assert!(
+        svm.get_account(&address).is_none(),
+        "failed withdraw must not leave a spent marker at {address}"
+    );
+}
+
 /// The full positive path: deposit the fixture's commitment, then withdraw against the
 /// root that deposit produced. Also pins the three ways that root is expressed against
 /// each other - the off-chain tree, the on-chain registry, and the fixture's public input.
@@ -158,6 +180,9 @@ fn calculate_root_and_withdraw() {
 
     let proof_hash = upload_fixture_proof(&mut svm, &payer);
 
+    // No marker before the first valid withdraw.
+    assert_nullifier_missing(&svm, &public_inputs);
+
     let result = call_withdraw_ix(
         &mut svm,
         &payer,
@@ -166,6 +191,9 @@ fn calculate_root_and_withdraw() {
         proof_hash,
     );
     assert_withdraw_verified(result);
+
+    // First valid withdraw creates the spent marker.
+    assert_nullifier_created(&svm, &public_inputs);
 }
 
 /// A later deposit moves the current root on. The fixture's root is now history, and
@@ -190,14 +218,16 @@ fn withdraw_accepts_a_recorded_historical_root() {
     );
 
     let proof_hash = upload_fixture_proof(&mut svm, &payer);
+    let public_inputs = public_inputs_from_fixture();
     let result = call_withdraw_ix(
         &mut svm,
         &payer,
         FIXTURE_RECIPIENT,
-        public_inputs_from_fixture(),
+        public_inputs,
         proof_hash,
     );
     assert_withdraw_verified(result);
+    assert_nullifier_created(&svm, &public_inputs);
 }
 
 /// Same valid proof and public inputs, but a different recipient account. The destination
@@ -212,14 +242,17 @@ fn withdraw_to_another_recipient_fails() {
 
     let other_recipient = Keypair::new().pubkey();
     assert_ne!(other_recipient, FIXTURE_RECIPIENT);
+    let public_inputs = public_inputs_from_fixture();
     let result = call_withdraw_ix(
         &mut svm,
         &payer,
         other_recipient,
-        public_inputs_from_fixture(),
+        public_inputs,
         proof_hash,
     );
     assert_custom_error(result, DappError::DestinationMismatch);
+    // Destination check failed, so the `init` nullifier must have been rolled back.
+    assert_nullifier_missing(&svm, &public_inputs);
 }
 
 /// The payer as recipient is also refused, but earlier: `sender` and `recipient` are both
@@ -233,16 +266,18 @@ fn withdraw_to_the_payer_fails() {
 
     let proof_hash = upload_fixture_proof(&mut svm, &payer);
 
+    let public_inputs = public_inputs_from_fixture();
     let result = call_withdraw_ix(
         &mut svm,
         &payer,
         payer.pubkey(),
-        public_inputs_from_fixture(),
+        public_inputs,
         proof_hash,
     );
     let failure = result.expect_err("withdraw to the payer must fail");
     let rendered = format!("{:?}", failure.err);
     assert!(rendered.contains("Custom(2040)"), "got: {rendered}");
+    assert_nullifier_missing(&svm, &public_inputs);
 }
 
 /// Asking for a different amount with the same proof fails verification. The new amount
@@ -267,6 +302,7 @@ fn withdraw_with_a_changed_amount_fails() {
         proof_hash,
     );
     assert_custom_error(result, DappError::InvalidProof);
+    assert_nullifier_missing(&svm, &public_inputs);
 }
 
 /// A root this pool never recorded is refused, even with the matching deposit present.
@@ -289,6 +325,7 @@ fn withdraw_with_an_unknown_root_fails() {
         proof_hash,
     );
     assert_custom_error(result, DappError::UnknownRoot);
+    assert_nullifier_missing(&svm, &public_inputs);
 }
 
 /// Slots 2..99 of the ring buffer still hold `EMPTY_TREE_VALUE`, the "nothing here yet"
@@ -319,6 +356,7 @@ fn withdraw_with_the_unused_history_marker_fails() {
         proof_hash,
     );
     assert_custom_error(result, DappError::UnknownRoot);
+    assert_nullifier_missing(&svm, &public_inputs);
 }
 
 /// Swapping in a different root that the pool *did* record gets past the registry lookup
@@ -347,6 +385,7 @@ fn withdraw_with_a_recorded_but_different_root_fails() {
         proof_hash,
     );
     assert_custom_error(result, DappError::InvalidProof);
+    assert_nullifier_missing(&svm, &public_inputs);
 }
 
 /// A chunk amount with a nonzero byte above the u64 range is refused on chain before
@@ -371,7 +410,102 @@ fn withdraw_with_a_chunk_amount_above_u64_fails() {
         proof_hash,
     );
     assert_custom_error(result, DappError::ChunkAmountTooLarge);
+    assert_nullifier_missing(&svm, &public_inputs);
 }
+
+/// Second spend of the same nullifier fails, even in a fresh transaction with the same
+/// valid proof. The `init` nullifier account already exists, so account creation fails
+/// before verification. The marker stays spent.
+#[test]
+fn withdraw_replay_with_same_nullifier_fails() {
+    let (mut svm, payer) = setup();
+    send_ok(&mut svm, &payer, initialize_ix(payer.pubkey()));
+    deposit_with_fixture_values(&mut svm, &payer);
+
+    let public_inputs = public_inputs_from_fixture();
+    let proof_hash = upload_fixture_proof(&mut svm, &payer);
+
+    let first = call_withdraw_ix(
+        &mut svm,
+        &payer,
+        FIXTURE_RECIPIENT,
+        public_inputs,
+        proof_hash,
+    );
+    assert_withdraw_verified(first);
+    assert_nullifier_created(&svm, &public_inputs);
+
+    // Fresh transaction (new blockhash inside `send`), same nullifier. This must fail
+    // in nullifier handling, not in duplicate-transaction detection.
+    let replay = call_withdraw_ix(
+        &mut svm,
+        &payer,
+        FIXTURE_RECIPIENT,
+        public_inputs,
+        proof_hash,
+    );
+    let failure = replay.expect_err("replay with the same nullifier must fail");
+    assert!(
+        !failure.meta.logs.iter().any(|line| line.contains("Proof verified")),
+        "replay must not verify, logs:\n{}",
+        failure.meta.logs.join("\n")
+    );
+    // Still spent after the failed replay.
+    assert_nullifier_created(&svm, &public_inputs);
+}
+
+/// Same nullifier, but a different fee payer with their own uploaded proof account.
+/// Proof storage is per-sender, the nullifier is global, so the second spend still fails.
+#[test]
+fn withdraw_replay_with_another_sender_fails() {
+    let (mut svm, payer) = setup();
+    send_ok(&mut svm, &payer, initialize_ix(payer.pubkey()));
+    deposit_with_fixture_values(&mut svm, &payer);
+
+    let public_inputs = public_inputs_from_fixture();
+    let proof_hash = upload_fixture_proof(&mut svm, &payer);
+
+    let first = call_withdraw_ix(
+        &mut svm,
+        &payer,
+        FIXTURE_RECIPIENT,
+        public_inputs,
+        proof_hash,
+    );
+    assert_withdraw_verified(first);
+    assert_nullifier_created(&svm, &public_inputs);
+
+    // Second sender funds their own fee/rent and uploads the same proof bytes under
+    // their own proof PDA (seeds include the sender).
+    let other_payer = Keypair::new();
+    svm.airdrop(&other_payer.pubkey(), AIRDROP_LAMPORTS).unwrap();
+    let other_proof_hash = upload_fixture_proof(&mut svm, &other_payer);
+    assert_eq!(other_proof_hash, proof_hash);
+    let (first_proof_pda, _) = proof_pda(&payer.pubkey(), proof_hash);
+    let (other_proof_pda, _) = proof_pda(&other_payer.pubkey(), proof_hash);
+    assert_ne!(first_proof_pda, other_proof_pda);
+
+    // Same nullifier bytes, so the same global marker PDA.
+    let (marker, _) = nullifier_pda(&public_inputs.nullifier);
+    assert!(svm.get_account(&marker).is_some());
+
+    let replay = call_withdraw_ix(
+        &mut svm,
+        &other_payer,
+        FIXTURE_RECIPIENT,
+        public_inputs,
+        other_proof_hash,
+    );
+    let failure = replay.expect_err("replay with another sender must fail");
+    assert!(
+        !failure.meta.logs.iter().any(|line| line.contains("Proof verified")),
+        "replay must not verify, logs:\n{}",
+        failure.meta.logs.join("\n")
+    );
+    assert_nullifier_created(&svm, &public_inputs);
+}
+
+
 
 fn build_mt_tree(user_commitment_hash: Fr, total_amount: Fr) -> OffChainImt {
     let deposit_commitment_hash = hash2(user_commitment_hash, total_amount);

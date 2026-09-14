@@ -21,6 +21,10 @@ pub fn proof_pda(sender: &Address, proof_hash: [u8; 32]) -> (Address, u8) {
     find_pda(&[b"proof_storage", sender.as_ref(), proof_hash.as_ref()])
 }
 
+pub fn nullifier_pda(nullifier_be: &[u8; 32]) -> (Address, u8) {
+    find_pda(&[b"nullifier", nullifier_be.as_ref()])
+}
+
 pub fn find_pda(seeds: &[&[u8]]) -> (Address, u8) {
     Address::find_program_address(seeds, &zk_shielded_pool_solana::id())
 }
@@ -78,6 +82,10 @@ pub fn withdraw_ix(
     public_inputs: PublicInputs,
     proof_hash: [u8; 32],
 ) -> Instruction {
+    // Nullifier PDA uses the same big-endian bytes the program seeds with.
+    // Copy them first so the struct can still be moved into the instruction.
+    let nullifier_bytes = public_inputs.nullifier;
+    let nullifier_address = nullifier_pda(&nullifier_bytes).0;
     instruction::Withdraw {
         proof_hash,
         public_inputs,
@@ -88,6 +96,7 @@ pub fn withdraw_ix(
         roots_registry: root_registry_pda().0,
         proof_account: proof_pda(&sender, proof_hash).0,
         recipient,
+        nullifier_account: nullifier_address,
         system_program: System::id(),
     })
 }

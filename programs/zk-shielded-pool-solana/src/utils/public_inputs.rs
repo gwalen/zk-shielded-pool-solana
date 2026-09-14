@@ -4,7 +4,7 @@ use crate::utils::errors::DappError;
 
 // NOTE: bytes for public inputs are stored as big-endian (BE) after conversion from Fr values
 // this is what proof verifier expects
-#[derive(AnchorSerialize, AnchorDeserialize, IdlType)]
+#[derive(AnchorSerialize, AnchorDeserialize, IdlType, Copy, Clone)]
 pub struct PublicInputs {
     pub step: [u8; 32],         // u8 step number as Fr
     pub chunk_amount: [u8; 32], // u64 chunk amount as Fr

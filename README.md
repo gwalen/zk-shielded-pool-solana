@@ -11,6 +11,10 @@ This Anchor v2 program implements a shielded SOL pool. A deposit transfers lampo
 - The `deposit` instruction handler accepts a BN254 scalar-field commitment and a nonzero lamport amount. It computes `Poseidon(user_commitment_hash, total_amount)`, inserts the result into the tree, transfers the lamports from the sender to the vault, and emits `DepositDone`.
 - The `withdraw` instruction handler takes the five 32-byte big-endian public inputs and a `proof_hash` for an already uploaded proof. The Merkle path stays private inside the circuit: the caller sends no Merkle proof. The handler reverses `public_inputs.root` into little-endian order and requires it to be a root the pool itself recorded, then verifies the proof. Unused ring-buffer slots hold `EMPTY_TREE_VALUE` (the field value one), which is never a real root and is rejected. Roots pushed out of the 100-entry ring buffer are rejected too. The caller also passes a writable `recipient` account (it does not sign). After verification the handler hashes the recipient's public key the same way the circuit does (four big-endian `u64` groups, Poseidon) and requires the result to equal `public_inputs.dest_address`.
 
+### Note:
+
+Proofs generated from the same witnesses and public inputs can have different proof bytes because the prover uses randomness to hide witness information. This is called blinding. With fresh randomness, the proof bytes change, but the nullifier stays the same, so generating another proof cannot bypass the double-spend check.
+
 ## Setup
 
 Install Rust, the Solana platform tools, and the Anchor v2 CLI used by this repository (`anchor2` alias).
