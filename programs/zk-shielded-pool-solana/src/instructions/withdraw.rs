@@ -49,7 +49,8 @@ fn pinned_kzg_vk() -> KzgVk {
 #[derive(Accounts)]
 #[instruction(proof_hash: [u8; 32], public_inputs: PublicInputs)]
 pub struct Withdraw {
-    #[account(mut)]
+    /// `unsafe(dup)` (implies `mut`): the sender may also be the `recipient`. See `recipient`.
+    #[account(unsafe(dup))]
     pub sender: Signer,
 
     #[account(mut, seeds = [b"vault"], bump = vault.bump)]
@@ -66,9 +67,22 @@ pub struct Withdraw {
     )]
     pub proof_account: Account<ProofStorage>,
 
-    /// Receives the payout. Does not sign. Its address is checked against
+    // TODO: report anchor issue to GH
+    /// Receives the payout. Does not have to sign. Its address is checked against
     /// `public_inputs.dest_address` in the handler, so any other account is rejected.
-    #[account(mut)]
+    ///
+    /// `unsafe(dup)` (implies `mut`): the recipient may also be the `sender`, so a user can
+    /// withdraw to the wallet that pays the fees. Without it Anchor rejects the same writable
+    /// account twice (error 2040).
+    ///
+    /// Both `sender` and `recipient` need `unsafe(dup)`. When an account repeats, Anchor marks
+    /// both positions, and `unsafe(dup)` only removes its own field from the `mut` mask. So the
+    /// check still fires if the other field of the pair is plain `mut`. That is why the vault
+    /// (plain `mut`) as recipient is still rejected with 2040.
+    ///
+    /// Sharing is harmless here: `Signer` and `UncheckedAccount` hold no typed data, and the
+    /// payout uses `add_lamports`, which reads the live balance.
+    #[account(unsafe(dup))]
     pub recipient: UncheckedAccount,
 
     /// Nullifier marker for a withdrawal step. Created once, paid by the sender.
@@ -92,6 +106,13 @@ pub fn handle(
     proof_hash: [u8; 32],         // 32 bytes
     public_inputs: &PublicInputs, // 5 * 32 bytes = 160 bytes
 ) -> Result<()> {
+    // A depositor can pick the vault address as a destination, so the proof alone does not
+    // prevent it. Paying the vault to itself would spend the nullifier and pay nobody.
+    require!(
+        ctx.accounts.recipient.address() != ctx.accounts.vault.address(),
+        DappError::RecipientIsVault
+    );
+
     // public_inputs.root is big-endian - that is what the verifier needs.
     // history stores little-endian, so we create a little-endian version for the check
     let root_le = reverse_byte_order(public_inputs.root);
@@ -101,7 +122,7 @@ pub fn handle(
     );
 
     // Decoded from the same bytes the verifier checks below, so the amount is the proven one.
-    let _chunk_amount_lamports = public_inputs.chunk_amount_u64()?;
+    let chunk_amount_lamports = public_inputs.chunk_amount_u64()?;
 
     let stored_len = ctx.accounts.proof_account.proof_current_len.get() as usize;
     require!(stored_len <= PROOF_BUFFER_LEN, DappError::ProofBufferFull);
@@ -142,11 +163,31 @@ pub fn handle(
     );
 
     // Anchor created the nullifier account before this handler ran (`init`).
-    // If any check above failed, the whole transaction fails and Solana rolls back all changes,
-    // so no spent marker is left. Record the bump only after all checks.
+    // If any check above or the payout below fails, the whole transaction fails and Solana
+    // rolls back all changes, so no spent marker is left. Record the bump only after all checks.
     ctx.accounts.nullifier_account.bump = ctx.bumps.nullifier_account;
 
-    msg!("Proof verified");
+    pay_out(&ctx.accounts.vault, &ctx.accounts.recipient, chunk_amount_lamports)?;
+
+    msg!("Withdrawal done");
+
+    Ok(())
+}
+
+/// A System Program transfer would not work here: it only moves lamports out of system-owned accounts.
+/// This is why we are using direct lamports manipulation, cos the vault is owned by this program,
+/// so the program may decrease its lamports directly.
+fn pay_out(vault: &Account<Vault>, recipient: &UncheckedAccount, amount: u64) -> Result<()> {
+    // The vault must keep its rent-exempt minimum, so only lamports above it can be paid out.
+    let rent_minimum = vault.min_lamports()?;
+    let spendable = vault
+        .get_lamports()
+        .checked_sub(rent_minimum)
+        .ok_or(DappError::InsufficientVaultFunds)?;
+    require!(amount <= spendable, DappError::InsufficientVaultFunds);
+
+    vault.sub_lamports(amount)?;
+    recipient.add_lamports(amount)?;
 
     Ok(())
 }

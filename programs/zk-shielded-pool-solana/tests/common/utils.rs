@@ -18,6 +18,7 @@ use {
 use super::constants::*;
 use super::instruction_helpers::{proof_pda, upload_proof_ix};
 
+// TODO: put step 0 also in its own file
 /// The checked-in GWC proof the withdrawal tests replay.
 pub const FIXTURE_PROOF: &[u8] =
     include_bytes!("../../../../../solana-proof-generator/fixtures/proof.bin");
@@ -26,11 +27,34 @@ pub const FIXTURE_PROOF: &[u8] =
 pub const FIXTURE_PUBLIC_INPUTS: &[u8] =
     include_bytes!("../../../../../solana-proof-generator/fixtures/public_inputs.bin");
 
-/// Read the checked-in public inputs into the struct the program takes.
-pub fn public_inputs_from_fixture() -> PublicInputs {
-    assert_eq!(FIXTURE_PUBLIC_INPUTS.len(), CHECKED_IN_PUBLIC_INPUTS_LEN);
+/// Step 1 and step 2 of the same deposit. Same witness as step 0 except the step, so they
+/// verify against the same `vk.bin` and `kzg_vk.bin`.
+pub const FIXTURE_STEP1_PROOF: &[u8] =
+    include_bytes!("../../../../../solana-proof-generator/fixtures/step1/proof.bin");
+pub const FIXTURE_STEP1_PUBLIC_INPUTS: &[u8] =
+    include_bytes!("../../../../../solana-proof-generator/fixtures/step1/public_inputs.bin");
+pub const FIXTURE_STEP2_PROOF: &[u8] =
+    include_bytes!("../../../../../solana-proof-generator/fixtures/step2/proof.bin");
+pub const FIXTURE_STEP2_PUBLIC_INPUTS: &[u8] =
+    include_bytes!("../../../../../solana-proof-generator/fixtures/step2/public_inputs.bin");
 
-    let byte_chunks: [[u8; 32]; PUBLIC_INPUT_COUNT] = FIXTURE_PUBLIC_INPUTS
+/// `(proof, public inputs)` for steps 0, 1 and 2, in step order.
+pub const FIXTURE_STEP_PROOFS: [(&[u8], &[u8]); 3] = [
+    (FIXTURE_PROOF, FIXTURE_PUBLIC_INPUTS),
+    (FIXTURE_STEP1_PROOF, FIXTURE_STEP1_PUBLIC_INPUTS),
+    (FIXTURE_STEP2_PROOF, FIXTURE_STEP2_PUBLIC_INPUTS),
+];
+
+/// Read the checked-in step 0 public inputs into the struct the program takes.
+pub fn public_inputs_from_fixture() -> PublicInputs {
+    public_inputs_from_bytes(FIXTURE_PUBLIC_INPUTS)
+}
+
+/// Read five 32-byte big-endian public inputs into the struct the program takes.
+pub fn public_inputs_from_bytes(bytes: &[u8]) -> PublicInputs {
+    assert_eq!(bytes.len(), CHECKED_IN_PUBLIC_INPUTS_LEN);
+
+    let byte_chunks: [[u8; 32]; PUBLIC_INPUT_COUNT] = bytes
         .chunks_exact(32)
         .map(|chunk| <[u8; 32]>::try_from(chunk).unwrap())
         .collect::<Vec<[u8; 32]>>()
@@ -40,11 +64,16 @@ pub fn public_inputs_from_fixture() -> PublicInputs {
     PublicInputs::from_byte_chunks(&byte_chunks)
 }
 
-/// Upload the checked-in proof, split over the two instructions the packet budget
-/// forces, and return its hash. Also checks that the bytes landed in the buffer.
+/// Upload the checked-in step 0 proof. See `upload_proof`.
 pub fn upload_fixture_proof(svm: &mut LiteSVM, payer: &Keypair) -> [u8; 32] {
-    assert_eq!(FIXTURE_PROOF.len(), CHECKED_IN_PROOF_LEN);
-    let proof_hash = calculate_proof_hash(FIXTURE_PROOF);
+    upload_proof(svm, payer, FIXTURE_PROOF)
+}
+
+/// Upload a proof, split over the two instructions the packet budget forces, and
+/// return its hash. Also checks that the bytes landed in the buffer.
+pub fn upload_proof(svm: &mut LiteSVM, payer: &Keypair, proof: &[u8]) -> [u8; 32] {
+    assert_eq!(proof.len(), CHECKED_IN_PROOF_LEN);
+    let proof_hash = calculate_proof_hash(proof);
     let proof_address = proof_pda(&payer.pubkey(), proof_hash).0;
 
     send_ok(
@@ -54,7 +83,7 @@ pub fn upload_fixture_proof(svm: &mut LiteSVM, payer: &Keypair) -> [u8; 32] {
             payer.pubkey(),
             0,
             CHECKED_IN_PROOF_LEN as u16,
-            FIXTURE_PROOF[..PROOF_UPLOAD_PART0_LEN].to_vec(),
+            proof[..PROOF_UPLOAD_PART0_LEN].to_vec(),
             proof_hash,
             proof_address,
         ),
@@ -66,7 +95,7 @@ pub fn upload_fixture_proof(svm: &mut LiteSVM, payer: &Keypair) -> [u8; 32] {
             payer.pubkey(),
             1,
             CHECKED_IN_PROOF_LEN as u16,
-            FIXTURE_PROOF[PROOF_UPLOAD_PART0_LEN..].to_vec(),
+            proof[PROOF_UPLOAD_PART0_LEN..].to_vec(),
             proof_hash,
             proof_address,
         ),
@@ -77,7 +106,7 @@ pub fn upload_fixture_proof(svm: &mut LiteSVM, payer: &Keypair) -> [u8; 32] {
         stored.proof_current_len.get() as usize,
         CHECKED_IN_PROOF_LEN
     );
-    assert_eq!(&stored.proof[..CHECKED_IN_PROOF_LEN], FIXTURE_PROOF);
+    assert_eq!(&stored.proof[..CHECKED_IN_PROOF_LEN], proof);
 
     proof_hash
 }

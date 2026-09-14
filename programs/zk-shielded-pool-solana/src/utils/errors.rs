@@ -26,6 +26,10 @@ pub enum DappError {
     ChunkAmountTooLarge,
     /// The recipient account's address hash does not match the proven destination
     DestinationMismatch,
+    /// The vault cannot pay the chunk amount and still keep its rent-exempt minimum
+    InsufficientVaultFunds,
+    /// The vault cannot be the withdrawal recipient
+    RecipientIsVault,
 
     // --------------------------------------------------------------------------------------------------------
     // ---- Poseidon syscall status codes (solana-poseidon::PoseidonSyscallError) mapped to our app errors ----
