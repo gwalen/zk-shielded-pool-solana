@@ -503,11 +503,11 @@ fn withdraw_to_the_payer_succeeds_when_the_payer_is_the_proven_destination() {
     let wallet = FIXTURE_RECIPIENT;
     svm.airdrop(&wallet, 1_000_000_000).unwrap();
 
-    let proof_hash = calculate_proof_hash(FIXTURE_PROOF);
+    let proof_hash = calculate_proof_hash(FIXTURE_STEP0_PROOF);
     let proof_address = proof_pda(&wallet, proof_hash).0;
     let proof_parts = [
-        (0u8, &FIXTURE_PROOF[..PROOF_UPLOAD_PART0_LEN]),
-        (1u8, &FIXTURE_PROOF[PROOF_UPLOAD_PART0_LEN..]),
+        (0u8, &FIXTURE_STEP0_PROOF[..PROOF_UPLOAD_PART0_LEN]),
+        (1u8, &FIXTURE_STEP0_PROOF[PROOF_UPLOAD_PART0_LEN..]),
     ];
     for (part, bytes) in proof_parts {
         send_unsigned(

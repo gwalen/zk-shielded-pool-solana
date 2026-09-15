@@ -10,11 +10,11 @@ pub const AIRDROP_LAMPORTS: u64 = 20_000_000_000;
 
 pub const DEPOSIT_LAMPORTS: u64 = 1_250_000_000;
 
-/// Checked-in GWC proof (`solana-proof-generator/fixtures/proof.bin`).
+/// Checked-in GWC proof (`solana-proof-generator/fixtures/step0/proof.bin`).
 pub const CHECKED_IN_PROOF_LEN: usize = 1088;
 /// First `upload_proof` chunk. One instruction has about 971 bytes leftover after headers.
 pub const PROOF_UPLOAD_PART0_LEN: usize = 800;
-/// Five 32-byte public inputs (`solana-proof-generator/fixtures/public_inputs.bin`).
+/// Five 32-byte public inputs (`solana-proof-generator/fixtures/step0/public_inputs.bin`).
 pub const CHECKED_IN_PUBLIC_INPUTS_LEN: usize = 160;
 pub const PUBLIC_INPUT_COUNT: usize = 5;
 /// Same CU cap the Mollusk verifier harness uses (`SOLANA_TRANSACTION_CU_LIMIT`).
@@ -31,7 +31,7 @@ pub const ENABLE_BIG_MOD_EXP_SYSCALL_ID: Address =
 
 //**** Proof fixture constants ****
 // Same values as solana-proof-generator/circuits/shielded-pool/src/circuit/prover.rs
-// (`build_fixture_input`). The checked-in proof was generated from them.
+// (`build_fixture_input_for_step`). The checked-in step 0, 1 and 2 proofs were generated from them.
 
 pub const SECRET_S: u64 = 1_234_567_890;
 /// All three chunks go to this key. Only the public key is used, no keypair file.

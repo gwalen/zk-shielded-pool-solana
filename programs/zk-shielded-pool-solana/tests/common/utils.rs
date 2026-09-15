@@ -18,14 +18,13 @@ use {
 use super::constants::*;
 use super::instruction_helpers::{proof_pda, upload_proof_ix};
 
-// TODO: put step 0 also in its own file
-/// The checked-in GWC proof the withdrawal tests replay.
-pub const FIXTURE_PROOF: &[u8] =
-    include_bytes!("../../../../../solana-proof-generator/fixtures/proof.bin");
+/// The checked-in step 0 GWC proof the withdrawal tests replay.
+pub const FIXTURE_STEP0_PROOF: &[u8] =
+    include_bytes!("../../../../../solana-proof-generator/fixtures/step0/proof.bin");
 
 /// The five 32-byte big-endian public inputs that proof was generated for.
-pub const FIXTURE_PUBLIC_INPUTS: &[u8] =
-    include_bytes!("../../../../../solana-proof-generator/fixtures/public_inputs.bin");
+pub const FIXTURE_STEP0_PUBLIC_INPUTS: &[u8] =
+    include_bytes!("../../../../../solana-proof-generator/fixtures/step0/public_inputs.bin");
 
 /// Step 1 and step 2 of the same deposit. Same witness as step 0 except the step, so they
 /// verify against the same `vk.bin` and `kzg_vk.bin`.
@@ -40,14 +39,14 @@ pub const FIXTURE_STEP2_PUBLIC_INPUTS: &[u8] =
 
 /// `(proof, public inputs)` for steps 0, 1 and 2, in step order.
 pub const FIXTURE_STEP_PROOFS: [(&[u8], &[u8]); 3] = [
-    (FIXTURE_PROOF, FIXTURE_PUBLIC_INPUTS),
+    (FIXTURE_STEP0_PROOF, FIXTURE_STEP0_PUBLIC_INPUTS),
     (FIXTURE_STEP1_PROOF, FIXTURE_STEP1_PUBLIC_INPUTS),
     (FIXTURE_STEP2_PROOF, FIXTURE_STEP2_PUBLIC_INPUTS),
 ];
 
 /// Read the checked-in step 0 public inputs into the struct the program takes.
 pub fn public_inputs_from_fixture() -> PublicInputs {
-    public_inputs_from_bytes(FIXTURE_PUBLIC_INPUTS)
+    public_inputs_from_bytes(FIXTURE_STEP0_PUBLIC_INPUTS)
 }
 
 /// Read five 32-byte big-endian public inputs into the struct the program takes.
@@ -66,7 +65,7 @@ pub fn public_inputs_from_bytes(bytes: &[u8]) -> PublicInputs {
 
 /// Upload the checked-in step 0 proof. See `upload_proof`.
 pub fn upload_fixture_proof(svm: &mut LiteSVM, payer: &Keypair) -> [u8; 32] {
-    upload_proof(svm, payer, FIXTURE_PROOF)
+    upload_proof(svm, payer, FIXTURE_STEP0_PROOF)
 }
 
 /// Upload a proof, split over the two instructions the packet budget forces, and
