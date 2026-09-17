@@ -19,25 +19,6 @@ use common::instruction_helpers::*;
 
 
 #[test]
-fn hello_logs_the_greeting() {
-    let (mut svm, payer) = setup();
-    println!("program id: {}", zk_shielded_pool_solana::id());
-    send_ok(&mut svm, &payer, initialize_ix(payer.pubkey()));
-
-    let meta = send_ok(&mut svm, &payer, hello_ix(payer.pubkey()));
-    let logs = meta.logs.join("\n");
-    println!("my logs: {logs}");
-    assert!(
-        logs.contains("Hello, Solana!"),
-        "expected the program to log its greeting, got:\n{logs}"
-    );
-    assert!(
-        logs.contains(&zk_shielded_pool_solana::id().to_string()),
-        "expected the program to log its program ID, got:\n{logs}"
-    );
-}
-
-#[test]
 fn initialize_writes_root_registry_in_place() {
     let (mut svm, payer) = setup();
     let (root_registry_address, root_registry_bump) = root_registry_pda();
@@ -388,11 +369,6 @@ fn paused_program_rejects_other_instructions_until_unpause() {
     let (mut svm, payer) = setup();
     send_ok(&mut svm, &payer, initialize_ix(payer.pubkey()));
     send_ok(&mut svm, &payer, pause_ix(payer.pubkey()));
-
-    assert_custom_error(
-        send(&mut svm, &payer, &[hello_ix(payer.pubkey())]),
-        DappError::ProgramPaused,
-    );
 
     let user_commitment_hash = poseidon_hash::hash2([3u8; 32], [4u8; 32]).unwrap();
     assert_custom_error(

@@ -10,13 +10,12 @@ pub mod utils;
 
 use crate::utils::public_inputs::PublicInputs;
 
-use instructions::{    
+use instructions::{
     deposit::{self, *},
-    withdraw::{self, *},
-    hello::{self, *},
     initialize::{self, *},
     pause::{self, *},
     upload_proof::{self, *},
+    withdraw::{self, *},
 };
 
 declare_id!("FCrymxYUTEnXDJXdDn2E71KPxB9sBjXZCh1ezBwmUhvp");
@@ -24,10 +23,6 @@ declare_id!("FCrymxYUTEnXDJXdDn2E71KPxB9sBjXZCh1ezBwmUhvp");
 #[program]
 pub mod zk_shielded_pool_solana {
     use super::*;
-
-    pub fn hello(ctx: &mut Context<HelloAccountConstraints>) -> Result<()> {
-        hello::handle_hello(ctx)
-    }
 
     pub fn initialize(ctx: &mut Context<Initialize>) -> Result<()> {
         initialize::handle(ctx)

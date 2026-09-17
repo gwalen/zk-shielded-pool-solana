@@ -40,13 +40,6 @@ pub fn find_pda(seeds: &[&[u8]]) -> (Address, u8) {
     Address::find_program_address(seeds, &zk_shielded_pool_solana::id())
 }
 
-pub fn hello_ix(payer: Address) -> Instruction {
-    instruction::Hello {}.to_instruction(accounts::HelloAccountConstraints {
-        payer,
-        program_config: program_config_pda(),
-    })
-}
-
 pub fn pause_ix(owner: Address) -> Instruction {
     instruction::Pause {}.to_instruction(accounts::PauseUnpause {
         owner,

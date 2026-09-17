@@ -10,7 +10,7 @@ pub struct DepositDone {
     pub new_root: Address,                //  [u8; 32],
 }
 
-// Tets event to check the quasar fix
+// Temporary: only to test Anchor v2 events. Will be removed.
 #[event]
 pub struct BytesEvent {
     pub flag: u8,

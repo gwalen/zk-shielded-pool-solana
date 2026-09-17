@@ -1,6 +1,9 @@
 use anchor_lang::prelude::*;
 
-use crate::state::{program_config::ProgramConfig, root_registry::RootRegistry, vault::Vault};
+use crate::{
+    state::{program_config::ProgramConfig, root_registry::RootRegistry, vault::Vault},
+    utils::events::BytesEvent,
+};
 
 /// Accounts for the initialize instruction.
 /// Creates the vault and root-registry PDAs and fills the empty Merkle tree.
@@ -50,6 +53,16 @@ pub fn handle(ctx: &mut Context<Initialize>) -> Result<()> {
     // Fills the empty tree and the root ring buffer in place, with no stack allocation.
     root_registry.initialize_empty()?;
     root_registry.bump = ctx.bumps.root_registry;
+
+    // Temporary: only to test Anchor v2 events. Will be removed.
+    emit!(BytesEvent {
+        flag: 0x01,
+        val1: 0x1234,
+        vector: alloc::vec![0x01, 0x02, 0x03],
+        hash: [0xAA; 3],
+        amount: 1,
+        hash2: [0xAA; 11],
+    });
 
     Ok(())
 }
