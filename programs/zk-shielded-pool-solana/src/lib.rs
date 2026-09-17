@@ -15,6 +15,7 @@ use instructions::{
     withdraw::{self, *},
     hello::{self, *},
     initialize::{self, *},
+    pause::{self, *},
     upload_proof::{self, *},
 };
 
@@ -30,6 +31,14 @@ pub mod zk_shielded_pool_solana {
 
     pub fn initialize(ctx: &mut Context<Initialize>) -> Result<()> {
         initialize::handle(ctx)
+    }
+
+    pub fn pause(ctx: &mut Context<PauseUnpause>) -> Result<()> {
+        pause::handle_pause(ctx)
+    }
+
+    pub fn unpause(ctx: &mut Context<PauseUnpause>) -> Result<()> {
+        pause::handle_unpause(ctx)
     }
 
     pub fn deposit(
@@ -49,10 +58,10 @@ pub mod zk_shielded_pool_solana {
     }
 
     /**
-    On a real cluster, 1088 proof bytes will not fit. Rough leftover for this ix (1 signer, 4 keys):
+    On a real cluster, 1088 proof bytes will not fit. Rough leftover for this ix (1 signer, 5 keys):
     - packet budget: 1232
-    - overhead (sig, header, 4 pubkeys, blockhash, compiled ix): ~237
-    - remaining for ix data: ~971
+    - overhead (sig, header, 5 pubkeys, blockhash, compiled ix): ~269
+    - remaining for ix data: ~939
     - ix data is disc + proof_hash(32) + part(1) + u16 len(2) + proof
      */
     pub fn upload_proof(

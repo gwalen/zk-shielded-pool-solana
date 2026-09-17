@@ -58,6 +58,10 @@ pub enum DappError {
     PoseidonInvalidWidthCircom,
     /// Unexpected / unknown Poseidon syscall failure
     PoseidonUnexpected,
+    /// Only the program_config owner can pause or unpause
+    Unauthorized,
+    /// The program is paused
+    ProgramPaused,
 }
 
 impl DappError {

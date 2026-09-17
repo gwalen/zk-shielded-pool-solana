@@ -1,7 +1,7 @@
 use anchor_lang::prelude::*;
 
 use crate::{
-    state::{root_registry::RootRegistry, vault::Vault},
+    state::{program_config::ProgramConfig, root_registry::RootRegistry, vault::Vault},
     utils::{
         common::is_in_fr_range, errors::DappError, events::DepositDone,
         imt_tree::u64_to_32bytes_le, poseidon_hash,
@@ -12,6 +12,13 @@ use crate::{
 pub struct Deposit {
     #[account(mut)]
     pub sender: Signer,
+
+    #[account(
+        seeds = [ProgramConfig::SEED_PREFIX],
+        bump,
+        constraint = !program_config.pause.get() @ DappError::ProgramPaused,
+    )]
+    pub program_config: Account<ProgramConfig>,
 
     #[account(mut, seeds = [Vault::SEED_PREFIX], bump = vault.bump)]
     pub vault: Account<Vault>,

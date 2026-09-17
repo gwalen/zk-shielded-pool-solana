@@ -29,14 +29,13 @@ pub struct Initialize {
         init,
         payer = signer,
         seeds = [RootRegistry::SEED_PREFIX],
-        bump, // TODO: later add explicit bump
+        bump,
     )]
     pub root_registry: Account<RootRegistry>,
 
     pub system_program: Program<System>,
 }
 
-// TODO: add config account that will store the signer as owner (for procol pausing, have pause flag, and is_init flag)
 // we don't [inline] this function to keep the handler stack separate from instruction entrypoint function
 pub fn handle(ctx: &mut Context<Initialize>) -> Result<()> {
     msg!("Initializing Shielded Pool Program");

@@ -356,9 +356,6 @@ fn withdraw_fails_when_the_vault_cannot_keep_its_rent() {
     );
     assert_eq!(account_lamports(&svm, FIXTURE_RECIPIENT), 0);
 
-    // The failed transaction is in LiteSVM's history. A new blockhash makes the retry a
-    // different transaction.
-    svm.expire_blockhash();
     set_lamports(&mut svm, vault_address, rent_minimum + chunk);
 
     let result = call_withdraw_ix(
@@ -719,10 +716,6 @@ fn withdraw_replay_with_same_nullifier_fails() {
     let vault_after_first = account_lamports(&svm, vault_pda());
     assert_eq!(account_lamports(&svm, FIXTURE_RECIPIENT), FIXTURE_CHUNKS[0]);
 
-    // `send` reuses the latest blockhash, so the same bytes would be refused as a
-    // duplicate transaction. Expire it so the replay is a new transaction and has to
-    // fail in nullifier handling.
-    svm.expire_blockhash();
     let replay = call_withdraw_ix(
         &mut svm,
         &payer,

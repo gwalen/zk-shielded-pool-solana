@@ -1,4 +1,6 @@
-use crate::utils::events::BytesEvent;
+use crate::{
+    state::program_config::ProgramConfig, utils::errors::DappError, utils::events::BytesEvent,
+};
 use anchor_lang::prelude::*;
 
 /// Accounts for the hello instruction.
@@ -8,6 +10,13 @@ use anchor_lang::prelude::*;
 pub struct HelloAccountConstraints {
     #[allow(dead_code)]
     pub payer: Signer,
+
+    #[account(
+        seeds = [ProgramConfig::SEED_PREFIX],
+        bump,
+        constraint = !program_config.pause.get() @ DappError::ProgramPaused,
+    )]
+    pub program_config: Account<ProgramConfig>,
 }
 
 #[inline(always)]

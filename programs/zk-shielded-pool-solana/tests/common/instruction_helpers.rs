@@ -41,7 +41,24 @@ pub fn find_pda(seeds: &[&[u8]]) -> (Address, u8) {
 }
 
 pub fn hello_ix(payer: Address) -> Instruction {
-    instruction::Hello {}.to_instruction(accounts::HelloAccountConstraints { payer })
+    instruction::Hello {}.to_instruction(accounts::HelloAccountConstraints {
+        payer,
+        program_config: program_config_pda(),
+    })
+}
+
+pub fn pause_ix(owner: Address) -> Instruction {
+    instruction::Pause {}.to_instruction(accounts::PauseUnpause {
+        owner,
+        program_config: program_config_pda(),
+    })
+}
+
+pub fn unpause_ix(owner: Address) -> Instruction {
+    instruction::Unpause {}.to_instruction(accounts::PauseUnpause {
+        owner,
+        program_config: program_config_pda(),
+    })
 }
 
 pub fn initialize_ix(signer: Address) -> Instruction {
@@ -61,6 +78,7 @@ pub fn deposit_ix(sender: Address, user_commitment_hash: [u8; 32], total_amount:
     }
     .to_instruction(accounts::Deposit {
         sender,
+        program_config: program_config_pda(),
         vault: vault_pda(),
         roots_registry: root_registry_pda().0,
         system_program: System::id(),
@@ -83,6 +101,7 @@ pub fn upload_proof_ix(
     }
     .to_instruction(accounts::UploadProof {
         sender,
+        program_config: program_config_pda(),
         proof_account: proof_pda,
         system_program: System::id(),
     })
@@ -104,6 +123,7 @@ pub fn withdraw_ix(
     }
     .to_instruction(accounts::Withdraw {
         sender,
+        program_config: program_config_pda(),
         vault: vault_pda(),
         roots_registry: root_registry_pda().0,
         proof_account: proof_pda(&sender, proof_hash).0,

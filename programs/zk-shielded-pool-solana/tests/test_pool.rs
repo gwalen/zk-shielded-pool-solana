@@ -1,7 +1,7 @@
 use {
-    anchor_v2_testing::Signer,
+    anchor_v2_testing::{Keypair, Signer},
     zk_shielded_pool_solana::{
-        state::{proof_storage::ProofStorage, root_registry::RootRegistry},
+        state::{program_config::ProgramConfig, proof_storage::ProofStorage, root_registry::RootRegistry},
         utils::{
             constants::{EMPTY_TREE_VALUE, ROOT_RING_BUFFER_LENGTH},
             errors::DappError,
@@ -22,6 +22,7 @@ use common::instruction_helpers::*;
 fn hello_logs_the_greeting() {
     let (mut svm, payer) = setup();
     println!("program id: {}", zk_shielded_pool_solana::id());
+    send_ok(&mut svm, &payer, initialize_ix(payer.pubkey()));
 
     let meta = send_ok(&mut svm, &payer, hello_ix(payer.pubkey()));
     let logs = meta.logs.join("\n");
@@ -44,8 +45,8 @@ fn initialize_writes_root_registry_in_place() {
     send_ok(&mut svm, &payer, initialize_ix(payer.pubkey()));
 
     let expected_imt = ImtTree::new().unwrap();
-    let root_registry = read_pod::<RootRegistry>(&svm, root_registry_address);
 
+    let root_registry = read_pod::<RootRegistry>(&svm, root_registry_address);
     assert_eq!(root_registry.imt.root, expected_imt.root);
     assert_eq!(root_registry.imt.frontiers, expected_imt.frontiers);
     assert_eq!(root_registry.imt.zero_values, expected_imt.zero_values);
@@ -62,6 +63,10 @@ fn initialize_writes_root_registry_in_place() {
             EMPTY_TREE_VALUE
         );
     }
+
+    let program_config = read_pod::<ProgramConfig>(&svm, program_config_pda());
+    assert_eq!(program_config.owner, payer.pubkey());
+    assert!(!program_config.pause.get());
 }
 
 #[test]
@@ -143,6 +148,7 @@ fn deposit_zero_lamports_fail_case() {
 #[test]
 fn upload_proof_writes_the_slice_into_the_fixed_buffer() {
     let (mut svm, payer) = setup();
+    send_ok(&mut svm, &payer, initialize_ix(payer.pubkey()));
     let proof_mock = vec![1u8, 2, 3, 4];
     let proof_hash = calculate_proof_hash(&proof_mock);
     let (proof_address, proof_bump) = proof_pda(&payer.pubkey(), proof_hash);
@@ -173,6 +179,7 @@ fn upload_proof_writes_the_slice_into_the_fixed_buffer() {
 #[test]
 fn upload_proof_overwrites_previous_bytes() {
     let (mut svm, payer) = setup();
+    send_ok(&mut svm, &payer, initialize_ix(payer.pubkey()));
     let first_chunk = vec![1u8, 2, 3, 4];
     let second_chunk = vec![9u8, 8];
     // Same account, so both writes use the first chunk's hash.
@@ -215,6 +222,7 @@ fn upload_proof_overwrites_previous_bytes() {
 #[test]
 fn upload_proof_rejects_empty_chunk() {
     let (mut svm, payer) = setup();
+    send_ok(&mut svm, &payer, initialize_ix(payer.pubkey()));
     let proof_mock = Vec::<u8>::new();
     let proof_hash = calculate_proof_hash(&proof_mock);
     let proof_address = proof_pda(&payer.pubkey(), proof_hash).0;
@@ -239,6 +247,7 @@ fn upload_proof_rejects_empty_chunk() {
 #[test]
 fn upload_proof_max_proof_length() {
     let (mut svm, payer) = setup();
+    send_ok(&mut svm, &payer, initialize_ix(payer.pubkey()));
     let proof_mock = vec![7u8; 900];
     let proof_hash = calculate_proof_hash(&proof_mock);
     let proof_address = proof_pda(&payer.pubkey(), proof_hash).0;
@@ -263,6 +272,7 @@ fn upload_proof_max_proof_length() {
 #[test]
 fn upload_proof_append_second_part_after_first() {
     let (mut svm, payer) = setup();
+    send_ok(&mut svm, &payer, initialize_ix(payer.pubkey()));
     let part_0 = vec![0x11u8; 800];
     let part_1 = vec![0x22u8; 464];
     let mut full_proof = part_0.clone();
@@ -342,3 +352,112 @@ fn withdraw_without_the_matching_deposit_fails() {
         "failed withdraw must not leave a spent marker at {nullifier_address}"
     );
 }
+
+#[test]
+fn owner_can_pause_and_unpause() {
+    let (mut svm, payer) = setup();
+    send_ok(&mut svm, &payer, initialize_ix(payer.pubkey()));
+
+    send_ok(&mut svm, &payer, pause_ix(payer.pubkey()));
+    let paused = read_pod::<ProgramConfig>(&svm, program_config_pda());
+    assert!(paused.pause.get());
+    assert_eq!(paused.owner, payer.pubkey());
+
+    send_ok(&mut svm, &payer, unpause_ix(payer.pubkey()));
+    let unpaused = read_pod::<ProgramConfig>(&svm, program_config_pda());
+    assert!(!unpaused.pause.get());
+}
+
+#[test]
+fn non_owner_cannot_pause() {
+    let (mut svm, payer) = setup();
+    send_ok(&mut svm, &payer, initialize_ix(payer.pubkey()));
+
+    let stranger = Keypair::new();
+    svm.airdrop(&stranger.pubkey(), AIRDROP_LAMPORTS).unwrap();
+
+    assert_custom_error(
+        send(&mut svm, &stranger, &[pause_ix(stranger.pubkey())]),
+        DappError::Unauthorized,
+    );
+    assert!(!read_pod::<ProgramConfig>(&svm, program_config_pda()).pause.get());
+}
+
+#[test]
+fn paused_program_rejects_other_instructions_until_unpause() {
+    let (mut svm, payer) = setup();
+    send_ok(&mut svm, &payer, initialize_ix(payer.pubkey()));
+    send_ok(&mut svm, &payer, pause_ix(payer.pubkey()));
+
+    assert_custom_error(
+        send(&mut svm, &payer, &[hello_ix(payer.pubkey())]),
+        DappError::ProgramPaused,
+    );
+
+    let user_commitment_hash = poseidon_hash::hash2([3u8; 32], [4u8; 32]).unwrap();
+    assert_custom_error(
+        send(
+            &mut svm,
+            &payer,
+            &[deposit_ix(
+                payer.pubkey(),
+                user_commitment_hash,
+                DEPOSIT_LAMPORTS,
+            )],
+        ),
+        DappError::ProgramPaused,
+    );
+
+    let proof_mock = vec![1u8, 2, 3, 4];
+    let proof_hash = calculate_proof_hash(&proof_mock);
+    let proof_address = proof_pda(&payer.pubkey(), proof_hash).0;
+    assert_custom_error(
+        send(
+            &mut svm,
+            &payer,
+            &[upload_proof_ix(
+                payer.pubkey(),
+                0,
+                proof_mock.len() as u16,
+                proof_mock.clone(),
+                proof_hash,
+                proof_address,
+            )],
+        ),
+        DappError::ProgramPaused,
+    );
+
+    assert_custom_error(
+        send(
+            &mut svm,
+            &payer,
+            &[withdraw_ix(
+                payer.pubkey(),
+                FIXTURE_RECIPIENT,
+                public_inputs_from_fixture(),
+                [9u8; 32],
+            )],
+        ),
+        DappError::ProgramPaused,
+    );
+
+    send_ok(&mut svm, &payer, unpause_ix(payer.pubkey()));
+    send_ok(
+        &mut svm,
+        &payer,
+        deposit_ix(payer.pubkey(), user_commitment_hash, DEPOSIT_LAMPORTS),
+    );
+    send_ok(
+        &mut svm,
+        &payer,
+        upload_proof_ix(
+            payer.pubkey(),
+            0,
+            proof_mock.len() as u16,
+            proof_mock,
+            proof_hash,
+            proof_address,
+        ),
+    );
+}
+

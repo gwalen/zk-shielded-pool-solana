@@ -9,6 +9,7 @@ use crate::{
     utils::public_inputs::PublicInputs,
     state::{
         nullifier::Nullifier,
+        program_config::ProgramConfig,
         proof_storage::{ProofStorage, PROOF_BUFFER_LEN},
         root_registry::RootRegistry,
         vault::Vault,
@@ -52,6 +53,13 @@ pub struct Withdraw {
     /// `unsafe(dup)` (implies `mut`): the sender may also be the `recipient`. See `recipient`.
     #[account(unsafe(dup))]
     pub sender: Signer,
+
+    #[account(
+        seeds = [ProgramConfig::SEED_PREFIX],
+        bump,
+        constraint = !program_config.pause.get() @ DappError::ProgramPaused,
+    )]
+    pub program_config: Account<ProgramConfig>,
 
     #[account(mut, seeds = [Vault::SEED_PREFIX], bump = vault.bump)]
     pub vault: Account<Vault>,

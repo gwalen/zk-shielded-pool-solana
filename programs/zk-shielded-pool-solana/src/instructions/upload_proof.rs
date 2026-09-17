@@ -1,7 +1,10 @@
 use anchor_lang::prelude::*;
 
 use crate::{
-    state::proof_storage::{ProofStorage, PROOF_BUFFER_LEN},
+    state::{
+        program_config::ProgramConfig,
+        proof_storage::{ProofStorage, PROOF_BUFFER_LEN},
+    },
     utils::errors::DappError,
 };
 
@@ -10,6 +13,13 @@ use crate::{
 pub struct UploadProof {
     #[account(mut)]
     pub sender: Signer,
+
+    #[account(
+        seeds = [ProgramConfig::SEED_PREFIX],
+        bump,
+        constraint = !program_config.pause.get() @ DappError::ProgramPaused,
+    )]
+    pub program_config: Account<ProgramConfig>,
 
     #[account(
         init_if_needed,

@@ -151,7 +151,13 @@ pub fn send(
     )
     .unwrap();
     let tx = VersionedTransaction::try_new(VersionedMessage::V0(msg), &[payer]).unwrap();
-    svm.send_transaction(tx)
+    
+    let result = svm.send_transaction(tx);
+    
+    // expire blockhash to simulate a new block being processed
+    advance_blockhash(svm);
+
+    result
 }
 
 pub fn send_ok(svm: &mut LiteSVM, payer: &Keypair, instruction: Instruction) -> TransactionMetadata {
@@ -205,4 +211,10 @@ pub fn read_pod<T: Discriminator + bytemuck::Pod>(svm: &LiteSVM, address: Addres
     let payload = &account.data[disc_len..disc_len + core::mem::size_of::<T>()];
     // from_bytes gives &T, so we copy and dereference it to get T (T is Copy)
     *bytemuck::from_bytes(payload)
+}
+// LiteSVM does not produce blocks. latest_blockhash() stays the same until something calls expire_blockhash()
+// if would retry a transaction it would have the same blockhash and there for the same signature and it would fail
+// so we simulate a blockhash advance by calling expire_blockhash()
+pub fn advance_blockhash(svm: &mut LiteSVM) {
+    svm.expire_blockhash();
 }
