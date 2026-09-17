@@ -14,7 +14,7 @@ pub struct UploadProof {
     #[account(
         init_if_needed,
         payer = sender,
-        seeds = [b"proof_storage", sender.address().as_ref(), _proof_hash.as_ref()],
+        seeds = [ProofStorage::SEED_PREFIX, sender.address().as_ref(), _proof_hash.as_ref()],
         bump,
     )]
     pub proof_account: Account<ProofStorage>,

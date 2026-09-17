@@ -4,25 +4,36 @@ use {
         solana_program::instruction::Instruction,
         Id,
     },
-    zk_shielded_pool_solana::{accounts, instruction, utils::public_inputs::PublicInputs},
+    zk_shielded_pool_solana::{
+        accounts, instruction,
+        state::{
+            nullifier::Nullifier, program_config::ProgramConfig, proof_storage::ProofStorage,
+            root_registry::RootRegistry, vault::Vault,
+        },
+        utils::public_inputs::PublicInputs,
+    },
 };
 use super::constants::*;
 
 
+pub fn program_config_pda() -> Address {
+    find_pda(&[ProgramConfig::SEED_PREFIX]).0
+}
+
 pub fn vault_pda() -> Address {
-    find_pda(&[b"vault"]).0
+    find_pda(&[Vault::SEED_PREFIX]).0
 }
 
 pub fn root_registry_pda() -> (Address, u8) {
-    find_pda(&[b"root_registry"])
+    find_pda(&[RootRegistry::SEED_PREFIX])
 }
 
 pub fn proof_pda(sender: &Address, proof_hash: [u8; 32]) -> (Address, u8) {
-    find_pda(&[b"proof_storage", sender.as_ref(), proof_hash.as_ref()])
+    find_pda(&[ProofStorage::SEED_PREFIX, sender.as_ref(), proof_hash.as_ref()])
 }
 
 pub fn nullifier_pda(nullifier_be: &[u8; 32]) -> (Address, u8) {
-    find_pda(&[b"nullifier", nullifier_be.as_ref()])
+    find_pda(&[Nullifier::SEED_PREFIX, nullifier_be.as_ref()])
 }
 
 pub fn find_pda(seeds: &[&[u8]]) -> (Address, u8) {
@@ -36,6 +47,7 @@ pub fn hello_ix(payer: Address) -> Instruction {
 pub fn initialize_ix(signer: Address) -> Instruction {
     instruction::Initialize {}.to_instruction(accounts::Initialize {
         signer,
+        program_config: program_config_pda(),
         vault: vault_pda(),
         root_registry: root_registry_pda().0,
         system_program: System::id(),

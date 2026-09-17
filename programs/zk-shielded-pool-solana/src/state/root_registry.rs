@@ -34,6 +34,8 @@ pub struct RootRegistry {
 }
 
 impl RootRegistry {
+    pub const SEED_PREFIX: &'static [u8] = b"root_registry";
+
     /// Set up a brand-new registry: an empty tree, and a history that holds only that
     /// empty tree's root in slot 0. Every other slot gets `EMPTY_TREE_VALUE`, the marker
     /// for "nothing recorded here yet".

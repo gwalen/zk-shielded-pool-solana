@@ -13,10 +13,10 @@ pub struct Deposit {
     #[account(mut)]
     pub sender: Signer,
 
-    #[account(mut, seeds = [b"vault"], bump = vault.bump)]
+    #[account(mut, seeds = [Vault::SEED_PREFIX], bump = vault.bump)]
     pub vault: Account<Vault>,
 
-    #[account(mut, seeds = [b"root_registry"], bump = roots_registry.bump)]
+    #[account(mut, seeds = [RootRegistry::SEED_PREFIX], bump = roots_registry.bump)]
     pub roots_registry: Account<RootRegistry>,
 
     pub system_program: Program<System>,

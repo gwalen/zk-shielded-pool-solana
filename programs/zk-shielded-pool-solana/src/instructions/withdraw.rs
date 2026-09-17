@@ -53,16 +53,16 @@ pub struct Withdraw {
     #[account(unsafe(dup))]
     pub sender: Signer,
 
-    #[account(mut, seeds = [b"vault"], bump = vault.bump)]
+    #[account(mut, seeds = [Vault::SEED_PREFIX], bump = vault.bump)]
     pub vault: Account<Vault>,
 
-    #[account(mut, seeds = [b"root_registry"], bump = roots_registry.bump)]
+    #[account(mut, seeds = [RootRegistry::SEED_PREFIX], bump = roots_registry.bump)]
     pub roots_registry: Account<RootRegistry>,
 
     #[account(
         init_if_needed,
         payer = sender,
-        seeds = [b"proof_storage", sender.address().as_ref(), proof_hash.as_ref()],
+        seeds = [ProofStorage::SEED_PREFIX, sender.address().as_ref(), proof_hash.as_ref()],
         bump,
     )]
     pub proof_account: Account<ProofStorage>,
@@ -93,7 +93,7 @@ pub struct Withdraw {
     #[account(
         init,
         payer = sender,
-        seeds = [b"nullifier", public_inputs.nullifier.as_ref()],
+        seeds = [Nullifier::SEED_PREFIX, public_inputs.nullifier.as_ref()],
         bump,
     )]
     pub nullifier_account: Account<Nullifier>,

@@ -11,3 +11,7 @@ pub struct ProofStorage {
     pub proof_current_len: PodU16,
     pub proof: [u8; PROOF_BUFFER_LEN],
 }
+
+impl ProofStorage {
+    pub const SEED_PREFIX: &'static [u8] = b"proof_storage";
+}

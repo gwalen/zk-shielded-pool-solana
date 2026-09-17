@@ -1,6 +1,6 @@
 use anchor_lang::prelude::*;
 
-use crate::state::{root_registry::RootRegistry, vault::Vault};
+use crate::state::{program_config::ProgramConfig, root_registry::RootRegistry, vault::Vault};
 
 /// Accounts for the initialize instruction.
 /// Creates the vault and root-registry PDAs and fills the empty Merkle tree.
@@ -10,17 +10,25 @@ pub struct Initialize {
     pub signer: Signer,
 
     #[account(
-        init_if_needed,
+        init,
         payer = signer,
-        seeds = [b"vault"],
-        bump, // TODO: later add explicit bump
+        seeds = [ProgramConfig::SEED_PREFIX],
+        bump,
+    )]
+    pub program_config: Account<ProgramConfig>,
+
+    #[account(
+        init,
+        payer = signer,
+        seeds = [Vault::SEED_PREFIX],
+        bump,
     )]
     pub vault: Account<Vault>,
 
     #[account(
-        init_if_needed,
+        init,
         payer = signer,
-        seeds = [b"root_registry"],
+        seeds = [RootRegistry::SEED_PREFIX],
         bump, // TODO: later add explicit bump
     )]
     pub root_registry: Account<RootRegistry>,
@@ -32,9 +40,13 @@ pub struct Initialize {
 // we don't [inline] this function to keep the handler stack separate from instruction entrypoint function
 pub fn handle(ctx: &mut Context<Initialize>) -> Result<()> {
     msg!("Initializing Shielded Pool Program");
+
+    let program_config = &mut ctx.accounts.program_config;
+    let root_registry = &mut ctx.accounts.root_registry;
+
     ctx.accounts.vault.bump = ctx.bumps.vault;
 
-    let root_registry = &mut ctx.accounts.root_registry;
+    **program_config = ProgramConfig::new(*ctx.accounts.signer.address(), false);
 
     // Fills the empty tree and the root ring buffer in place, with no stack allocation.
     root_registry.initialize_empty()?;
