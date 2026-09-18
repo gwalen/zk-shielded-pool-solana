@@ -67,11 +67,10 @@ pub struct Withdraw {
     #[account(mut, seeds = [RootRegistry::SEED_PREFIX], bump = roots_registry.bump)]
     pub roots_registry: Account<RootRegistry>,
 
+    /// Created by `upload_proof`. Withdraw only reads it.
     #[account(
-        init_if_needed,
-        payer = sender,
         seeds = [ProofStorage::SEED_PREFIX, sender.address().as_ref(), proof_hash.as_ref()],
-        bump,
+        bump = proof_account.bump,
     )]
     pub proof_account: Account<ProofStorage>,
 

@@ -417,6 +417,25 @@ fn non_owner_cannot_pause() {
 fn paused_program_rejects_other_instructions_until_unpause() {
     let (mut svm, payer) = setup();
     send_ok(&mut svm, &payer, initialize_ix(payer.pubkey()));
+
+    // Withdraw reads an existing proof PDA. Create it first so the paused call
+    // hits ProgramPaused instead of UninitializedAccount.
+    let mock_proof = vec![1u8, 2, 3, 4];
+    let mock_proof_hash = calculate_proof_hash(&mock_proof);
+    let mock_proof_address = proof_pda(&payer.pubkey(), mock_proof_hash).0;
+    send_ok(
+        &mut svm,
+        &payer,
+        upload_proof_ix(
+            payer.pubkey(),
+            0,
+            mock_proof.len() as u16,
+            mock_proof.clone(),
+            mock_proof_hash,
+            mock_proof_address,
+        ),
+    );
+
     send_ok(&mut svm, &payer, pause_ix(payer.pubkey()));
 
     let user_commitment_hash = poseidon_hash::hash2([3u8; 32], [4u8; 32]).unwrap();
@@ -433,9 +452,6 @@ fn paused_program_rejects_other_instructions_until_unpause() {
         DappError::ProgramPaused,
     );
 
-    let proof_mock = vec![1u8, 2, 3, 4];
-    let proof_hash = calculate_proof_hash(&proof_mock);
-    let proof_address = proof_pda(&payer.pubkey(), proof_hash).0;
     assert_custom_error(
         send(
             &mut svm,
@@ -443,10 +459,10 @@ fn paused_program_rejects_other_instructions_until_unpause() {
             &[upload_proof_ix(
                 payer.pubkey(),
                 0,
-                proof_mock.len() as u16,
-                proof_mock.clone(),
-                proof_hash,
-                proof_address,
+                mock_proof.len() as u16,
+                mock_proof.clone(),
+                mock_proof_hash,
+                mock_proof_address,
             )],
         ),
         DappError::ProgramPaused,
@@ -460,7 +476,7 @@ fn paused_program_rejects_other_instructions_until_unpause() {
                 payer.pubkey(),
                 FIXTURE_RECIPIENT,
                 public_inputs_from_fixture(),
-                [9u8; 32],
+                mock_proof_hash,
             )],
         ),
         DappError::ProgramPaused,
@@ -478,10 +494,10 @@ fn paused_program_rejects_other_instructions_until_unpause() {
         upload_proof_ix(
             payer.pubkey(),
             0,
-            proof_mock.len() as u16,
-            proof_mock,
-            proof_hash,
-            proof_address,
+            mock_proof.len() as u16,
+            mock_proof,
+            mock_proof_hash,
+            mock_proof_address,
         ),
     );
 }
