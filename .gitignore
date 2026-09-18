@@ -40,5 +40,5 @@ params/
 # Private docs
 docs-prv/
 
-# local json files
-*.json
+# main dir json files
+/*.json

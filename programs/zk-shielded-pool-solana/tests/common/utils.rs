@@ -1,9 +1,8 @@
 use {
+    anchor_client::handle_program_log,
     anchor_lang::{
-        bytemuck,
-        prelude::Address,
-        solana_program::instruction::Instruction,
-        Discriminator,
+        bytemuck, prelude::Address, solana_program::instruction::Instruction, wincode::SchemaRead,
+        BorshConfig, Discriminator, Event,
     },
     anchor_v2_testing::{Keypair, LiteSVM, Signer, VersionedTransaction},
     litesvm::types::{FailedTransactionMetadata, TransactionMetadata},
@@ -13,7 +12,6 @@ use {
         utils::{errors::DappError, public_inputs::PublicInputs},
     },
 };
-
 
 use super::constants::*;
 use super::instruction_helpers::{proof_pda, upload_proof_ix};
@@ -110,7 +108,6 @@ pub fn upload_proof(svm: &mut LiteSVM, payer: &Keypair, proof: &[u8]) -> [u8; 32
     proof_hash
 }
 
-
 /// Same Keccak256 as on-chain `sol_keccak256`. Host tests cannot call that
 /// syscall, so this uses the Solana hasher crate with its `sha3` feature.
 pub fn calculate_proof_hash(proof: &[u8]) -> [u8; 32] {
@@ -151,16 +148,20 @@ pub fn send(
     )
     .unwrap();
     let tx = VersionedTransaction::try_new(VersionedMessage::V0(msg), &[payer]).unwrap();
-    
+
     let result = svm.send_transaction(tx);
-    
+
     // expire blockhash to simulate a new block being processed
     advance_blockhash(svm);
 
     result
 }
 
-pub fn send_ok(svm: &mut LiteSVM, payer: &Keypair, instruction: Instruction) -> TransactionMetadata {
+pub fn send_ok(
+    svm: &mut LiteSVM,
+    payer: &Keypair,
+    instruction: Instruction,
+) -> TransactionMetadata {
     send_ok_many(svm, payer, &[instruction])
 }
 
@@ -174,6 +175,32 @@ pub fn send_ok_many(
             "transaction failed: {:?}\nlogs:\n{}",
             failure.err,
             failure.meta.logs.join("\n")
+        )
+    })
+}
+
+// TODO: AnchoV2 ticket create
+pub fn try_decode_event<T>(logs: &[String]) -> Option<T>
+where
+    T: Event + for<'de> SchemaRead<'de, BorshConfig, Dst = T>,
+{
+    let program_id = zk_shielded_pool_solana::id().to_string();
+    logs.iter().find_map(|log| {
+        handle_program_log::<T>(&program_id, log)
+            .ok()
+            .and_then(|(event, _, _)| event)
+    })
+}
+
+pub fn decode_event<T>(logs: &[String]) -> T
+where
+    T: Event + for<'de> SchemaRead<'de, BorshConfig, Dst = T>,
+{
+    try_decode_event(logs).unwrap_or_else(|| {
+        panic!(
+            "event {} not found in logs:\n{}",
+            core::any::type_name::<T>(),
+            logs.join("\n")
         )
     })
 }

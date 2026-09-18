@@ -75,7 +75,7 @@ pub mod zk_shielded_pool_solana {
         proof_final_len: u16,
         proof: alloc::vec::Vec<u8>,
     ) -> Result<()> {
-        upload_proof::handle(ctx, proof_final_len, part, &proof)
+        upload_proof::handle(ctx, _proof_hash, proof_final_len, part, &proof)
     }
 
     pub fn close_proof(ctx: &mut Context<CloseProof>, _proof_hash: [u8; 32]) -> Result<()> {

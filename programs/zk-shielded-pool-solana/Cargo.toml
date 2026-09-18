@@ -55,6 +55,8 @@ litesvm = "0.13"
 solana-keccak-hasher = { version = "3.1", features = ["sha3"] }
 # needed for testing
 halo2-base = { version = "0.5.1", default-features = false, features = ["halo2-axiom", "display", "test-utils"] }
+# Decode `emit!` logs in tests. Same git as `anchor-lang`.
+anchor-client = { git = "https://github.com/otter-sec/anchor.git", branch = "anchor-next" }
 # needed for testing
 anyhow = "1.0.99"
 

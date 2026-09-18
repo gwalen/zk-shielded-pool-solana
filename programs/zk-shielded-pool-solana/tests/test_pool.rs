@@ -1,4 +1,5 @@
 use {
+    anchor_lang::prelude::Address,
     anchor_v2_testing::{Keypair, Signer},
     zk_shielded_pool_solana::{
         state::{program_config::ProgramConfig, proof_storage::ProofStorage, root_registry::RootRegistry},
@@ -7,6 +8,7 @@ use {
             errors::DappError,
             flatten_array::get_array_element,
             imt_tree::{u64_to_32bytes_le, ImtTree},
+            events::{FullProofUploaded, PartialProofUploaded},
             poseidon_hash,
         },
     },
@@ -346,6 +348,53 @@ fn upload_proof_append_second_part_after_first() {
     assert!(stored.proof[full_proof.len()..]
         .iter()
         .all(|byte| *byte == 0));
+}
+
+#[test]
+fn upload_proof_emits_full_proof_uploaded_when_current_len_matches_final_len() {
+    let (mut svm, payer) = setup();
+    send_ok(&mut svm, &payer, initialize_ix(payer.pubkey()));
+    let part_0 = vec![0x11u8; 4];
+    let part_1 = vec![0x22u8; 4];
+    let mut full_proof = part_0.clone();
+    full_proof.extend_from_slice(&part_1);
+    let proof_hash = calculate_proof_hash(&full_proof);
+    let proof_address = proof_pda(&payer.pubkey(), proof_hash).0;
+    let final_len = full_proof.len() as u16;
+
+    let first = send_ok(
+        &mut svm,
+        &payer,
+        upload_proof_ix(
+            payer.pubkey(),
+            0,
+            final_len,
+            part_0.clone(),
+            proof_hash,
+            proof_address,
+        ),
+    );
+    let partial_upload_event = decode_event::<PartialProofUploaded>(&first.logs);
+    assert_eq!(partial_upload_event.sender, payer.pubkey());
+    assert_eq!(partial_upload_event.proof_hash, Address::from(proof_hash));
+    assert_eq!(partial_upload_event.proof_len, part_0.len() as u16);
+
+    let second = send_ok(
+        &mut svm,
+        &payer,
+        upload_proof_ix(
+            payer.pubkey(),
+            1,
+            final_len,
+            part_1.clone(),
+            proof_hash,
+            proof_address,
+        ),
+    );
+    let full_upload_event = decode_event::<FullProofUploaded>(&second.logs);
+    assert_eq!(full_upload_event.sender, payer.pubkey());
+    assert_eq!(full_upload_event.proof_hash, Address::from(proof_hash));
+    assert_eq!(full_upload_event.proof_len, final_len);
 }
 
 /// The checked-in proof is valid, but nothing was deposited into this pool. Its root was
