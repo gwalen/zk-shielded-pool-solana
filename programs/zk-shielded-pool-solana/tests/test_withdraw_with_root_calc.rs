@@ -9,7 +9,7 @@ use {
     zk_shielded_pool_solana::{
         state::{nullifier::Nullifier, root_registry::RootRegistry},
         utils::{
-            common::reverse_byte_order, constants::EMPTY_TREE_VALUE,
+            common::reverse_byte_order, constants::{DEFAULT_MIN_DEPOSIT_LAMPORTS, EMPTY_TREE_VALUE},
             dest_address_hash::dest_address_hash_le, errors::DappError,
             flatten_array::get_array_element, public_inputs::PublicInputs,
         },
@@ -411,7 +411,7 @@ fn withdraw_accepts_a_recorded_historical_root() {
     let fixture_root_le = root_registry(&svm).imt.root;
 
     // Somebody else deposits. The current root changes, slot 1 still holds ours.
-    deposit(&mut svm, &payer, 5, fr_to_le_bytes(hash1(7)));
+    deposit(&mut svm, &payer, DEFAULT_MIN_DEPOSIT_LAMPORTS, fr_to_le_bytes(hash1(7)));
 
     let registry = root_registry(&svm);
     assert_ne!(registry.imt.root, fixture_root_le);
@@ -646,7 +646,7 @@ fn withdraw_with_a_recorded_but_different_root_fails() {
     deposit_with_fixture_values(&mut svm, &payer);
 
     // A second deposit records a second, unrelated root.
-    deposit(&mut svm, &payer, 5, fr_to_le_bytes(hash1(7)));
+    deposit(&mut svm, &payer, DEFAULT_MIN_DEPOSIT_LAMPORTS, fr_to_le_bytes(hash1(7)));
     let other_root_be = reverse_byte_order(root_registry(&svm).imt.root);
 
     let proof_hash = upload_fixture_proof(&mut svm, &payer);

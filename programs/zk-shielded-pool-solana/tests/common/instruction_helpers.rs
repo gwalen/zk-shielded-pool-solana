@@ -54,6 +54,16 @@ pub fn unpause_ix(owner: Address) -> Instruction {
     })
 }
 
+pub fn update_min_deposit_ix(owner: Address, min_deposit_lamports: u64) -> Instruction {
+    instruction::UpdateMinDeposit {
+        min_deposit_lamports,
+    }
+    .to_instruction(accounts::UpdateMinDeposit {
+        owner,
+        program_config: program_config_pda(),
+    })
+}
+
 pub fn initialize_ix(signer: Address) -> Instruction {
     instruction::Initialize {}.to_instruction(accounts::Initialize {
         signer,

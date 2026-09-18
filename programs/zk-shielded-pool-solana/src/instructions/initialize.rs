@@ -2,7 +2,7 @@ use anchor_lang::prelude::*;
 
 use crate::{
     state::{program_config::ProgramConfig, root_registry::RootRegistry, vault::Vault},
-    utils::events::BytesEvent,
+    utils::{constants::DEFAULT_MIN_DEPOSIT_LAMPORTS, events::BytesEvent},
 };
 
 /// Accounts for the initialize instruction.
@@ -48,7 +48,11 @@ pub fn handle(ctx: &mut Context<Initialize>) -> Result<()> {
 
     ctx.accounts.vault.bump = ctx.bumps.vault;
 
-    **program_config = ProgramConfig::new(*ctx.accounts.signer.address(), false);
+    **program_config = ProgramConfig::new(
+        *ctx.accounts.signer.address(),
+        false,
+        DEFAULT_MIN_DEPOSIT_LAMPORTS,
+    );
 
     // Fills the empty tree and the root ring buffer in place, with no stack allocation.
     root_registry.initialize_empty()?;

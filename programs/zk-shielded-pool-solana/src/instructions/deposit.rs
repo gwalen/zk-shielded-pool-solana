@@ -37,6 +37,9 @@ pub fn handle(
     if total_amount == 0 {
         return Err(DappError::DepositAmountZero.into());
     }
+    if total_amount < ctx.accounts.program_config.min_deposit_lamports.get() {
+        return Err(DappError::DepositBelowMinimum.into());
+    }
     if !is_in_fr_range(&user_commitment_hash) {
         return Err(DappError::PoseidonInputLargerThanModulus.into());
     }

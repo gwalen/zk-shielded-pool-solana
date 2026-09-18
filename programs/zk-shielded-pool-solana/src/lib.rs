@@ -14,6 +14,7 @@ use instructions::{
     deposit::{self, *},
     initialize::{self, *},
     pause::{self, *},
+    update_min_deposit::{self, *},
     upload_proof::{self, *},
     withdraw::{self, *},
 };
@@ -34,6 +35,13 @@ pub mod zk_shielded_pool_solana {
 
     pub fn unpause(ctx: &mut Context<PauseUnpause>) -> Result<()> {
         pause::handle_unpause(ctx)
+    }
+
+    pub fn update_min_deposit(
+        ctx: &mut Context<UpdateMinDeposit>,
+        min_deposit_lamports: u64,
+    ) -> Result<()> {
+        update_min_deposit::handle(ctx, min_deposit_lamports)
     }
 
     pub fn deposit(

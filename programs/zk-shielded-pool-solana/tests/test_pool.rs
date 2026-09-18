@@ -3,7 +3,7 @@ use {
     zk_shielded_pool_solana::{
         state::{program_config::ProgramConfig, proof_storage::ProofStorage, root_registry::RootRegistry},
         utils::{
-            constants::{EMPTY_TREE_VALUE, ROOT_RING_BUFFER_LENGTH},
+            constants::{DEFAULT_MIN_DEPOSIT_LAMPORTS, EMPTY_TREE_VALUE, ROOT_RING_BUFFER_LENGTH},
             errors::DappError,
             flatten_array::get_array_element,
             imt_tree::{u64_to_32bytes_le, ImtTree},
@@ -48,6 +48,55 @@ fn initialize_writes_root_registry_in_place() {
     let program_config = read_pod::<ProgramConfig>(&svm, program_config_pda());
     assert_eq!(program_config.owner, payer.pubkey());
     assert!(!program_config.pause.get());
+    assert_eq!(
+        program_config.min_deposit_lamports.get(),
+        DEFAULT_MIN_DEPOSIT_LAMPORTS
+    );
+}
+
+/// Audit finding 1: every PDA in `initialize` uses plain `init`, so a second call must
+/// fail and leave the tree, the root history and the owner exactly as they were.
+#[test]
+fn second_initialize_call_fails_and_keeps_state() {
+    let (mut svm, payer) = setup();
+    send_ok(&mut svm, &payer, initialize_ix(payer.pubkey()));
+
+    // Put one leaf in, so a reset would be visible.
+    let user_commitment_hash = poseidon_hash::hash2([3u8; 32], [4u8; 32]).unwrap();
+    send_ok(
+        &mut svm,
+        &payer,
+        deposit_ix(payer.pubkey(), user_commitment_hash, DEPOSIT_LAMPORTS),
+    );
+    let root_registry_address = root_registry_pda().0;
+    let registry_before = read_pod::<RootRegistry>(&svm, root_registry_address);
+    let vault_lamports_before = account_lamports(&svm, vault_pda());
+
+    // The original owner and a stranger both fail.
+    let stranger = Keypair::new();
+    svm.airdrop(&stranger.pubkey(), AIRDROP_LAMPORTS).unwrap();
+    for signer in [&payer, &stranger] {
+        let failure = send(&mut svm, signer, &[initialize_ix(signer.pubkey())])
+            .err()
+            .unwrap_or_else(|| panic!("second initialize by {} must fail", signer.pubkey()));
+        // The system program refuses to allocate a PDA that already exists.
+        assert!(
+            failure.meta.logs.iter().any(|log| log.contains("already in use")),
+            "expected the system program to reject the existing PDA, logs:\n{}",
+            failure.meta.logs.join("\n")
+        );
+    }
+
+    let registry_after = read_pod::<RootRegistry>(&svm, root_registry_address);
+    assert_eq!(registry_after.imt.next_leaf_idx.get(), 1);
+    assert_eq!(registry_after.imt.root, registry_before.imt.root);
+    assert_eq!(registry_after.imt.frontiers, registry_before.imt.frontiers);
+    assert_eq!(registry_after.last_root_idx.get(), 1);
+    assert_eq!(registry_after.roots_history, registry_before.roots_history);
+    assert_eq!(account_lamports(&svm, vault_pda()), vault_lamports_before);
+
+    let program_config = read_pod::<ProgramConfig>(&svm, program_config_pda());
+    assert_eq!(program_config.owner, payer.pubkey());
 }
 
 #[test]
@@ -437,3 +486,130 @@ fn paused_program_rejects_other_instructions_until_unpause() {
     );
 }
 
+#[test]
+fn deposit_below_minimum_fails() {
+    let (mut svm, payer) = setup();
+    send_ok(&mut svm, &payer, initialize_ix(payer.pubkey()));
+
+    let vault_address = vault_pda();
+    let root_registry_address = root_registry_pda().0;
+    let vault_lamports_before = account_lamports(&svm, vault_address);
+    let root_before = read_pod::<RootRegistry>(&svm, root_registry_address).imt.root;
+
+    let user_commitment_hash = poseidon_hash::hash2([3u8; 32], [4u8; 32]).unwrap();
+    assert_custom_error(
+        send(
+            &mut svm,
+            &payer,
+            &[deposit_ix(
+                payer.pubkey(),
+                user_commitment_hash,
+                DEFAULT_MIN_DEPOSIT_LAMPORTS - 1,
+            )],
+        ),
+        DappError::DepositBelowMinimum,
+    );
+
+    // Nothing moved and no leaf was inserted.
+    assert_eq!(account_lamports(&svm, vault_address), vault_lamports_before);
+    let root_registry_after = read_pod::<RootRegistry>(&svm, root_registry_address);
+    assert_eq!(root_registry_after.imt.next_leaf_idx.get(), 0);
+    assert_eq!(root_registry_after.imt.root, root_before);
+
+    // Exactly the minimum is accepted.
+    send_ok(
+        &mut svm,
+        &payer,
+        deposit_ix(payer.pubkey(), user_commitment_hash, DEFAULT_MIN_DEPOSIT_LAMPORTS),
+    );
+    assert_eq!(
+        account_lamports(&svm, vault_address),
+        vault_lamports_before + DEFAULT_MIN_DEPOSIT_LAMPORTS
+    );
+    assert_eq!(
+        read_pod::<RootRegistry>(&svm, root_registry_address).imt.next_leaf_idx.get(),
+        1
+    );
+}
+
+#[test]
+fn owner_can_update_min_deposit_and_deposit_follows_it() {
+    let (mut svm, payer) = setup();
+    send_ok(&mut svm, &payer, initialize_ix(payer.pubkey()));
+
+    let new_minimum = 2 * DEFAULT_MIN_DEPOSIT_LAMPORTS;
+    send_ok(&mut svm, &payer, update_min_deposit_ix(payer.pubkey(), new_minimum));
+
+    let program_config = read_pod::<ProgramConfig>(&svm, program_config_pda());
+    assert_eq!(program_config.min_deposit_lamports.get(), new_minimum);
+    // The rest of the config is untouched.
+    assert_eq!(program_config.owner, payer.pubkey());
+    assert!(!program_config.pause.get());
+
+    // The old default is now too small, the new minimum passes.
+    let user_commitment_hash = poseidon_hash::hash2([3u8; 32], [4u8; 32]).unwrap();
+    assert_custom_error(
+        send(
+            &mut svm,
+            &payer,
+            &[deposit_ix(
+                payer.pubkey(),
+                user_commitment_hash,
+                DEFAULT_MIN_DEPOSIT_LAMPORTS,
+            )],
+        ),
+        DappError::DepositBelowMinimum,
+    );
+    send_ok(
+        &mut svm,
+        &payer,
+        deposit_ix(payer.pubkey(), user_commitment_hash, new_minimum),
+    );
+
+    // Lowering to zero leaves only the zero-amount check.
+    send_ok(&mut svm, &payer, update_min_deposit_ix(payer.pubkey(), 0));
+    send_ok(
+        &mut svm,
+        &payer,
+        deposit_ix(payer.pubkey(), user_commitment_hash, 1),
+    );
+    assert_custom_error(
+        send(
+            &mut svm,
+            &payer,
+            &[deposit_ix(payer.pubkey(), user_commitment_hash, 0)],
+        ),
+        DappError::DepositAmountZero,
+    );
+}
+
+#[test]
+fn non_owner_cannot_update_min_deposit() {
+    let (mut svm, payer) = setup();
+    send_ok(&mut svm, &payer, initialize_ix(payer.pubkey()));
+
+    let stranger = Keypair::new();
+    svm.airdrop(&stranger.pubkey(), AIRDROP_LAMPORTS).unwrap();
+
+    assert_custom_error(
+        send(&mut svm, &stranger, &[update_min_deposit_ix(stranger.pubkey(), 1)]),
+        DappError::Unauthorized,
+    );
+    assert_eq!(
+        read_pod::<ProgramConfig>(&svm, program_config_pda()).min_deposit_lamports.get(),
+        DEFAULT_MIN_DEPOSIT_LAMPORTS
+    );
+}
+
+#[test]
+fn min_deposit_can_be_updated_while_paused() {
+    let (mut svm, payer) = setup();
+    send_ok(&mut svm, &payer, initialize_ix(payer.pubkey()));
+    send_ok(&mut svm, &payer, pause_ix(payer.pubkey()));
+
+    send_ok(&mut svm, &payer, update_min_deposit_ix(payer.pubkey(), 1));
+    assert_eq!(
+        read_pod::<ProgramConfig>(&svm, program_config_pda()).min_deposit_lamports.get(),
+        1
+    );
+}

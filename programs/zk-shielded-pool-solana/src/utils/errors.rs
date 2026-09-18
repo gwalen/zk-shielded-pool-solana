@@ -58,10 +58,12 @@ pub enum DappError {
     PoseidonInvalidWidthCircom,
     /// Unexpected / unknown Poseidon syscall failure
     PoseidonUnexpected,
-    /// Only the program_config owner can pause or unpause
+    /// Only the program_config owner can pause, unpause or update the config
     Unauthorized,
     /// The program is paused
     ProgramPaused,
+    /// The deposit is smaller than `ProgramConfig.min_deposit_lamports`
+    DepositBelowMinimum,
 }
 
 impl DappError {

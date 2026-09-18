@@ -1,6 +1,11 @@
 pub const MERKLE_TREE_DEPTH: usize = 20;
 pub const ROOT_RING_BUFFER_LENGTH: usize = 100;
 
+/// Default minimum deposit written into `ProgramConfig` by `initialize`: 0.025 SOL.
+/// Makes filling the 2^20-leaf tree, or flushing the root ring buffer, cost real SOL
+/// instead of only transaction fees. The owner can change it with `update_min_deposit`.
+pub const DEFAULT_MIN_DEPOSIT_LAMPORTS: u64 = 25_000_000;
+
 // Fr (scalar field element) zero value
 pub const FR_ZERO: [u8; 32] = [0u8; 32];
 
