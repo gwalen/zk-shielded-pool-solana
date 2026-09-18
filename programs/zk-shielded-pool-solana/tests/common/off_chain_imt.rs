@@ -1,7 +1,8 @@
 use anyhow::{Error, Result};
 use halo2_base::halo2_proofs::halo2curves::{bn256::Fr, ff::PrimeField};
 use solana_poseidon::{Endianness, Parameters};
-use zk_shielded_pool_solana::utils::merkle_proof::MerkleProof;
+
+use super::merkle_proof::MerkleProof;
 
 pub const Z_0: Fr = Fr::zero();
 // tree node value that was not updated yet
@@ -99,11 +100,7 @@ impl OffChainImt {
     }
 
     pub fn build_merkle_proof(&self, leaf: Fr) -> Result<MerkleProof> {
-        let mut proof = MerkleProof {
-            leaf: fr_to_le_bytes(leaf),
-            siblings_path: Vec::new(),
-            siblings_side: Vec::new(),
-        };
+        let mut proof = MerkleProof::new(fr_to_le_bytes(leaf), Vec::new(), Vec::new());
         let leaf_idx = self
             .find_leaf_index(leaf)
             .ok_or_else(|| Error::msg("Leaf is not in the tree"))?;

@@ -5,6 +5,5 @@ pub mod imt_tree;
 pub mod flatten_array;
 pub mod common;
 pub mod events;
-pub mod merkle_proof;
 pub mod public_inputs;
 pub mod dest_address_hash;
