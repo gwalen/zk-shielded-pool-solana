@@ -4,3 +4,4 @@ pub mod upload_proof;
 pub mod withdraw;
 pub mod pause;
 pub mod update_min_deposit;
+pub mod close_proof;

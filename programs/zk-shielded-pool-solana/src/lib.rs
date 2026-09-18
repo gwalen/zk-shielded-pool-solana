@@ -11,6 +11,7 @@ pub mod utils;
 use crate::utils::public_inputs::PublicInputs;
 
 use instructions::{
+    close_proof::{self, *},
     deposit::{self, *},
     initialize::{self, *},
     pause::{self, *},
@@ -75,5 +76,9 @@ pub mod zk_shielded_pool_solana {
         proof: alloc::vec::Vec<u8>,
     ) -> Result<()> {
         upload_proof::handle(ctx, proof_final_len, part, &proof)
+    }
+
+    pub fn close_proof(ctx: &mut Context<CloseProof>, _proof_hash: [u8; 32]) -> Result<()> {
+        close_proof::handle(ctx)
     }
 }

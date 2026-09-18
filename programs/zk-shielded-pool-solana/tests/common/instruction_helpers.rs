@@ -110,6 +110,16 @@ pub fn upload_proof_ix(
     })
 }
 
+pub fn close_proof_ix(sender: Address, proof_hash: [u8; 32]) -> Instruction {
+    instruction::CloseProof {
+        _proof_hash: proof_hash,
+    }
+    .to_instruction(accounts::CloseProof {
+        sender,
+        proof_account: proof_pda(&sender, proof_hash).0,
+    })
+}
+
 pub fn withdraw_ix(
     sender: Address,
     recipient: Address,

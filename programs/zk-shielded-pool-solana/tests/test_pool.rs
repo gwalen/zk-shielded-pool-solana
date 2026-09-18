@@ -629,3 +629,62 @@ fn min_deposit_can_be_updated_while_paused() {
         1
     );
 }
+
+#[test]
+fn close_proof_returns_rent_to_sender() {
+    let (mut svm, payer) = setup();
+    send_ok(&mut svm, &payer, initialize_ix(payer.pubkey()));
+
+    let proof_hash = upload_fixture_proof(&mut svm, &payer);
+    let proof_address = proof_pda(&payer.pubkey(), proof_hash).0;
+    let rent = account_lamports(&svm, proof_address);
+    assert!(rent > 0);
+
+    let sender_before = account_lamports(&svm, payer.pubkey());
+    let meta = send_ok(&mut svm, &payer, close_proof_ix(payer.pubkey(), proof_hash));
+
+    assert!(svm.get_account(&proof_address).is_none_or(|account| account.lamports == 0));
+    // The sender pays one signature fee and gets the whole rent back.
+    let fee = meta.fee;
+    assert_eq!(account_lamports(&svm, payer.pubkey()), sender_before + rent - fee);
+}
+
+#[test]
+fn close_proof_rejects_fake_sender() {
+    let (mut svm, payer) = setup();
+    send_ok(&mut svm, &payer, initialize_ix(payer.pubkey()));
+    let proof_hash = upload_fixture_proof(&mut svm, &payer);
+    let proof_address = proof_pda(&payer.pubkey(), proof_hash).0;
+    let rent = account_lamports(&svm, proof_address);
+
+    // The fake sender derives a different PDA from its own address, so it cannot reach the payer's proof.
+    let fake_sender = Keypair::new();
+    svm.airdrop(&fake_sender.pubkey(), AIRDROP_LAMPORTS).unwrap();
+    let mut ix = close_proof_ix(fake_sender.pubkey(), proof_hash);
+    ix.accounts[1].pubkey = proof_address;
+    assert!(send(&mut svm, &fake_sender, &[ix]).is_err());
+
+    assert_eq!(account_lamports(&svm, proof_address), rent);
+}
+
+/// Withdraw only reads the proof account. Without an uploaded proof it must fail and
+/// must not allocate the proof account.
+#[test]
+fn withdraw_without_uploaded_proof_does_not_create_proof_account() {
+    let (mut svm, payer) = setup();
+    send_ok(&mut svm, &payer, initialize_ix(payer.pubkey()));
+
+    let proof_hash = calculate_proof_hash(FIXTURE_STEP0_PROOF);
+    let result = send(
+        &mut svm,
+        &payer,
+        &[
+            set_compute_unit_limit_ix(VERIFY_COMPUTE_UNIT_LIMIT),
+            request_heap_frame_ix(VERIFY_HEAP_FRAME_BYTES),
+            withdraw_ix(payer.pubkey(), FIXTURE_RECIPIENT, public_inputs_from_fixture(), proof_hash),
+        ],
+    );
+    assert!(result.is_err());
+    // check if the proof account is not created (lamports == 0)
+    assert_eq!(account_lamports(&svm, proof_pda(&payer.pubkey(), proof_hash).0), 0);
+}
