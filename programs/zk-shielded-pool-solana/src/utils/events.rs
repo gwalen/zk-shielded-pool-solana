@@ -9,7 +9,7 @@ pub struct DepositDone {
 }
 
 #[event]
-#[derive(Debug, PartialEq, AnchorDeserialize)]
+#[derive(Debug, PartialEq)]
 pub struct FullProofUploaded {
     pub sender: Address,
     pub proof_hash: Address, // [u8; 32]
@@ -17,7 +17,7 @@ pub struct FullProofUploaded {
 }
 
 #[event]
-#[derive(Debug, PartialEq, AnchorDeserialize)]
+#[derive(Debug, PartialEq)]
 pub struct PartialProofUploaded {
     pub sender: Address,
     pub proof_hash: Address, // [u8; 32]

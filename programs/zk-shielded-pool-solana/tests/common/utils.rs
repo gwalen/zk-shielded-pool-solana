@@ -1,8 +1,8 @@
 use {
-    anchor_client::handle_program_log,
+    anchor_client::{handle_program_log, parse_logs},
     anchor_lang::{
-        bytemuck, prelude::Address, solana_program::instruction::Instruction, wincode::SchemaRead,
-        BorshConfig, Discriminator, Event,
+        bytemuck, prelude::Address, solana_program::instruction::Instruction, AnchorDeserialize,
+        Discriminator, Event,
     },
     anchor_v2_testing::{Keypair, LiteSVM, Signer, VersionedTransaction},
     litesvm::types::{FailedTransactionMetadata, TransactionMetadata},
@@ -179,29 +179,33 @@ pub fn send_ok_many(
     })
 }
 
-// TODO: AnchoV2 ticket create
-pub fn try_decode_event<T>(logs: &[String]) -> Option<T>
-where
-    T: Event + for<'de> SchemaRead<'de, BorshConfig, Dst = T>,
-{
-    let program_id = zk_shielded_pool_solana::id().to_string();
-    logs.iter().find_map(|log| {
-        handle_program_log::<T>(&program_id, log)
-            .ok()
-            .and_then(|(event, _, _)| event)
-    })
+/// First `T` event our program emitted in `logs`, if any.
+///
+/// `parse_logs` walks the whole log list and tracks the CPI stack, so only
+/// `Program data:` lines written by our program are decoded. `#[event]` types
+/// already derive `AnchorDeserialize`, so no extra derive is needed on the event.
+pub fn try_decode_event<T: Event + AnchorDeserialize>(
+    logs: &[String],
+    program_id: &str,
+) -> Option<T> {
+    parse_logs::<T>(logs, program_id)
+        .ok()?
+        .into_iter()
+        .next()
 }
 
-pub fn decode_event<T>(logs: &[String]) -> T
-where
-    T: Event + for<'de> SchemaRead<'de, BorshConfig, Dst = T>,
-{
-    try_decode_event(logs).unwrap_or_else(|| {
-        panic!(
-            "event {} not found in logs:\n{}",
-            core::any::type_name::<T>(),
-            logs.join("\n")
-        )
+/// Same job as `try_decode_event`, but each line is decoded on its own with
+/// `handle_program_log`. That helper also returns CPI-stack hints (`new_program`,
+/// `did_pop`) that this loop ignores, so a `Program data:` line from another
+/// program could be taken if it happened to match `T`.
+pub fn try_decode_event_2<T: Event + AnchorDeserialize>(
+    logs: &[String],
+    program_id: &str,
+) -> Option<T> {
+    logs.iter().find_map(|log| {
+        handle_program_log::<T>(program_id, log)
+            .ok()
+            .and_then(|(event, _, _)| event)
     })
 }
 

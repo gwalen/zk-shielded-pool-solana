@@ -198,7 +198,6 @@ checksum = "683d7910e743518b0e34f1186f92494becacb047c7b6bf616c96772180fef923"
 [[package]]
 name = "anchor-client"
 version = "2.0.0-rc.1"
-source = "git+https://github.com/otter-sec/anchor.git?branch=anchor-next#2d5847f4a96883286416810d464915af721e1b25"
 dependencies = [
  "anchor-lang",
  "anyhow",
@@ -225,7 +224,6 @@ dependencies = [
 [[package]]
 name = "anchor-derive-accounts"
 version = "2.0.0-rc.1"
-source = "git+https://github.com/otter-sec/anchor.git?branch=anchor-next#2d5847f4a96883286416810d464915af721e1b25"
 dependencies = [
  "anchor-lang-idl",
  "bs58",
@@ -241,7 +239,6 @@ dependencies = [
 [[package]]
 name = "anchor-lang"
 version = "2.0.0-rc.1"
-source = "git+https://github.com/otter-sec/anchor.git?branch=anchor-next#2d5847f4a96883286416810d464915af721e1b25"
 dependencies = [
  "anchor-derive-accounts",
  "bytemuck",
@@ -262,7 +259,6 @@ dependencies = [
 [[package]]
 name = "anchor-lang-idl"
 version = "0.2.0"
-source = "git+https://github.com/otter-sec/anchor.git?branch=anchor-next#2d5847f4a96883286416810d464915af721e1b25"
 dependencies = [
  "anchor-lang-idl-spec",
  "anyhow",
@@ -275,7 +271,6 @@ dependencies = [
 [[package]]
 name = "anchor-lang-idl-spec"
 version = "0.1.0"
-source = "git+https://github.com/otter-sec/anchor.git?branch=anchor-next#2d5847f4a96883286416810d464915af721e1b25"
 dependencies = [
  "anyhow",
  "serde",
@@ -284,7 +279,6 @@ dependencies = [
 [[package]]
 name = "anchor-spl"
 version = "2.0.0-rc.1"
-source = "git+https://github.com/otter-sec/anchor.git?branch=anchor-next#2d5847f4a96883286416810d464915af721e1b25"
 dependencies = [
  "anchor-lang",
  "borsh",
@@ -306,7 +300,6 @@ dependencies = [
 [[package]]
 name = "anchor-v2-testing"
 version = "0.1.0"
-source = "git+https://github.com/otter-sec/anchor.git?branch=anchor-next#2d5847f4a96883286416810d464915af721e1b25"
 dependencies = [
  "litesvm",
  "solana-keypair",

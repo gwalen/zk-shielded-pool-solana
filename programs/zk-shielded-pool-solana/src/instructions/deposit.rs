@@ -50,7 +50,7 @@ pub fn handle(
     let new_root = roots_registry.insert(deposit_commitment_hash)?;
 
     let cpi_accounts = system_program::Transfer {
-        from: ctx.accounts.sender.cpi_handle_mut(), // TODO: this is wired, so AI thingy
+        from: ctx.accounts.sender.cpi_handle_mut(),
         to: ctx.accounts.vault.cpi_handle_mut(),
     };
     let cpi_ctx = CpiContext::new(ctx.accounts.system_program.address(), cpi_accounts);

@@ -374,7 +374,12 @@ fn upload_proof_emits_full_proof_uploaded_when_current_len_matches_final_len() {
             proof_address,
         ),
     );
-    let partial_upload_event = decode_event::<PartialProofUploaded>(&first.logs);
+    let program_id = zk_shielded_pool_solana::id().to_string();
+    let partial_upload_event =
+        try_decode_event::<PartialProofUploaded>(&first.logs, &program_id).unwrap();
+    let partial_upload_event_2 =
+        try_decode_event_2::<PartialProofUploaded>(&first.logs, &program_id).unwrap();
+    assert_eq!(partial_upload_event, partial_upload_event_2);
     assert_eq!(partial_upload_event.sender, payer.pubkey());
     assert_eq!(partial_upload_event.proof_hash, Address::from(proof_hash));
     assert_eq!(partial_upload_event.proof_len, part_0.len() as u16);
@@ -384,14 +389,18 @@ fn upload_proof_emits_full_proof_uploaded_when_current_len_matches_final_len() {
         &payer,
         upload_proof_ix(
             payer.pubkey(),
-            1,
+            1,  
             final_len,
             part_1.clone(),
             proof_hash,
             proof_address,
         ),
     );
-    let full_upload_event = decode_event::<FullProofUploaded>(&second.logs);
+    let full_upload_event =
+        try_decode_event::<FullProofUploaded>(&second.logs, &program_id).unwrap();
+    let full_upload_event_2 =
+        try_decode_event_2::<FullProofUploaded>(&second.logs, &program_id).unwrap();
+    assert_eq!(full_upload_event, full_upload_event_2);
     assert_eq!(full_upload_event.sender, payer.pubkey());
     assert_eq!(full_upload_event.proof_hash, Address::from(proof_hash));
     assert_eq!(full_upload_event.proof_len, final_len);

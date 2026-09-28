@@ -4,6 +4,16 @@ members = [
 ]
 resolver = "2"
 
+# Build against the local Anchor v2 fork instead of the GitHub checkout, so
+# Anchor-side changes can be tested here before they go upstream. The program
+# manifest keeps its `git = ...` lines; this block overrides where those
+# crates come from. Delete the block to go back to upstream.
+[patch."https://github.com/otter-sec/anchor.git"]
+anchor-lang = { path = "../../../crypto/solana/anchor-v2/lang-v2" }
+anchor-spl = { path = "../../../crypto/solana/anchor-v2/spl-v2" }
+anchor-client = { path = "../../../crypto/solana/anchor-v2/client" }
+anchor-v2-testing = { path = "../../../crypto/solana/anchor-v2/v2-testing" }
+
 [workspace.package]
 edition = "2021"
 # Matches the Anchor v2 stub / rust-toolchain pin so edition.workspace and
