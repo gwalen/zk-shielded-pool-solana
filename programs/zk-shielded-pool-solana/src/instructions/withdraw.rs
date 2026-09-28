@@ -174,7 +174,11 @@ pub fn handle(
     // rolls back all changes, so no spent marker is left. Record the bump only after all checks.
     ctx.accounts.nullifier_account.bump = ctx.bumps.nullifier_account;
 
-    pay_out(&ctx.accounts.vault, &ctx.accounts.recipient, chunk_amount_lamports)?;
+    pay_out(
+        &mut ctx.accounts.vault,
+        &mut ctx.accounts.recipient,
+        chunk_amount_lamports,
+    )?;
 
     msg!("Withdrawal done");
 
@@ -184,7 +188,7 @@ pub fn handle(
 /// A System Program transfer would not work here: it only moves lamports out of system-owned accounts.
 /// This is why we are using direct lamports manipulation, cos the vault is owned by this program,
 /// so the program may decrease its lamports directly.
-fn pay_out(vault: &Account<Vault>, recipient: &UncheckedAccount, amount: u64) -> Result<()> {
+fn pay_out(vault: &mut Account<Vault>, recipient: &mut UncheckedAccount, amount: u64) -> Result<()> {
     // The vault must keep its rent-exempt minimum, so only lamports above it can be paid out.
     let rent_minimum = vault.min_lamports()?;
     let spendable = vault
