@@ -1,0 +1,18 @@
+{
+  "name": "zk-shielded-pool-solana",
+  "private": true,
+  "description": "Admin scripts for zk_shielded_pool_solana. Run `anchor2 build` first: they read target/idl and target/types.",
+  "scripts": {
+    "initialize-pool": "tsx scripts/initialize-pool.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@coral-xyz/anchor": "0.32.1"
+  },
+  "devDependencies": {
+    "@types/node": "22.20.4",
+    "tsx": "4.23.15",
+    "typescript": "5.9.3"
+  },
+  "packageManager": "yarn@1.22.22"
+}

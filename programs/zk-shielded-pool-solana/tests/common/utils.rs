@@ -4,8 +4,11 @@ use {
         bytemuck, prelude::Address, solana_program::instruction::Instruction, AnchorDeserialize,
         Discriminator, Event,
     },
-    anchor_v2_testing::{Keypair, LiteSVM, Signer, VersionedTransaction},
-    litesvm::types::{FailedTransactionMetadata, TransactionMetadata},
+    anchor_v2_testing::{Keypair, Signer, VersionedTransaction},
+    litesvm::{
+        types::{FailedTransactionMetadata, TransactionMetadata},
+        LiteSVM,
+    },
     solana_message::{v0, VersionedMessage},
     zk_shielded_pool_solana::{
         state::proof_storage::ProofStorage,

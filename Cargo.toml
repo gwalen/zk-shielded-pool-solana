@@ -35,3 +35,14 @@ opt-level = 3
 debug = 1
 overflow-checks = true
 incremental = true
+
+# TEMPORARY: local anchor-v2 fork (branch fix/idl-pod-wrapper-fields) so the IDL
+# keeps Pod wrapper field types (PodU64, PodBool, ...). Remove once the fix is upstream.
+[patch."https://github.com/otter-sec/anchor.git"]
+anchor-lang = { path = "/Users/whale/development/workshop/crypto/solana/anchor-v2/lang-v2" }
+anchor-derive-accounts = { path = "/Users/whale/development/workshop/crypto/solana/anchor-v2/lang-v2/derive" }
+anchor-spl = { path = "/Users/whale/development/workshop/crypto/solana/anchor-v2/spl-v2" }
+anchor-client = { path = "/Users/whale/development/workshop/crypto/solana/anchor-v2/client" }
+anchor-lang-idl = { path = "/Users/whale/development/workshop/crypto/solana/anchor-v2/idl" }
+anchor-lang-idl-spec = { path = "/Users/whale/development/workshop/crypto/solana/anchor-v2/idl/spec" }
+anchor-v2-testing = { path = "/Users/whale/development/workshop/crypto/solana/anchor-v2/v2-testing" }

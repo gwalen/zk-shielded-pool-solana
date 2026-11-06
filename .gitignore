@@ -40,5 +40,6 @@ params/
 # Private docs
 docs-prv/
 
-# main dir json files
-/*.json
+
+# Node (scripts/)
+node_modules/

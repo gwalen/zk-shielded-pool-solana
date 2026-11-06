@@ -23,10 +23,11 @@ pub const VERIFY_COMPUTE_UNIT_LIMIT: u32 = 1_400_000;
 pub const VERIFY_HEAP_FRAME_BYTES: u32 = 64 * 1024;
 pub const COMPUTE_BUDGET_PROGRAM_ID: Address =
     anchor_lang::address!("ComputeBudget111111111111111111111111111111");
-// This is agave_feature_set::enable_big_mod_exp_syscall::ID. LiteSVM 0.13.1's
+// This is agave_feature_set::enable_big_mod_exp_syscall::ID as of Agave 4.3
+// (Agave 3.x used EBq48m8irRKuE7ZnMTLvLg2UuGSqhe8s8oMqnmja1fJw). LiteSVM 0.18.0's
 // mainnet snapshot does not include it yet.
 pub const ENABLE_BIG_MOD_EXP_SYSCALL_ID: Address =
-    anchor_lang::address!("EBq48m8irRKuE7ZnMTLvLg2UuGSqhe8s8oMqnmja1fJw");
+    anchor_lang::address!("expH2ppKPW2ANEdEmAjfhSEcnBQJfmoX4FjuNpe9ttg");
 
 
 //**** Proof fixture constants ****

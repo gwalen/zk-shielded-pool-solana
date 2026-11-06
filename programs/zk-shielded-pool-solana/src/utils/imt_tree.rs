@@ -10,7 +10,9 @@ use anchor_lang::prelude::*;
 ///
 /// Nested inside `RootRegistry`, so this type must be Pod: fixed-size, no
 /// padding holes, so the account bytes can be the struct. `repr(C)` plus
-/// `Pod` / `Zeroable` is that overlay.
+/// `Pod` / `Zeroable` is that overlay. `#[idl(bytemuck)]` marks it as bytemuck
+/// in the IDL too; without it the IDL lists it as borsh and `declare_program!`
+/// clients generate a non-Pod `ImtTree`, which breaks the bytemuck `RootRegistry`.
 ///
 /// # Fields
 ///
@@ -33,6 +35,7 @@ use anchor_lang::prelude::*;
 ///   frontiers: [u8; 32 * MERKLE_TREE_DEPTH] // MERKLE_TREE_DEPTH levels of 32 bytes each
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable, IdlType)]
+#[idl(bytemuck)]
 pub struct ImtTree {
     pub root: [u8; 32],
     pub frontiers: [u8; 32 * MERKLE_TREE_DEPTH],
